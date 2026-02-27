@@ -30,6 +30,16 @@ export interface ImagePart {
 }
 
 /**
+ * AI SDK v6 file part structure used for binary/image inputs.
+ */
+export interface FilePart {
+  type: 'file';
+  data?: string | URL | Buffer | ArrayBuffer | Uint8Array;
+  mediaType?: string;
+  url?: string;
+}
+
+/**
  * Extract image data from an AI SDK image part.
  * Converts various input formats to a data URL string.
  *
@@ -39,48 +49,56 @@ export interface ImagePart {
 export function extractImageData(part: unknown): ImageData | null {
   if (typeof part !== 'object' || part === null) return null;
 
-  const p = part as ImagePart;
-  const mimeType = p.mimeType || 'image/png';
+  const p = part as ImagePart | FilePart;
+  const isFilePart = p.type === 'file';
+  const mimeType = isFilePart ? p.mediaType || 'image/png' : p.mimeType || 'image/png';
 
-  // Case 1: Primary 'image' field is a string
-  if (typeof p.image === 'string') {
-    return extractFromString(p.image, mimeType);
+  if (isFilePart && !mimeType.toLowerCase().startsWith('image/')) {
+    return null;
+  }
+
+  const primaryInput = isFilePart ? p.data : p.image;
+
+  // Case 1: Primary image/file field is a string
+  if (typeof primaryInput === 'string') {
+    return extractFromString(primaryInput, mimeType);
   }
 
   // Case 2: URL object
-  if (p.image instanceof URL) {
+  if (typeof primaryInput === 'object' && primaryInput !== null && primaryInput instanceof URL) {
     // Only support data: URLs
-    if (p.image.protocol === 'data:') {
-      const dataUrlStr = p.image.toString();
-      // Extract mime type from data URL if not explicitly provided
-      const match = dataUrlStr.match(/^data:([^;,]+)/);
-      const extractedMimeType = match?.[1] || mimeType;
-      return { data: dataUrlStr, mimeType: extractedMimeType };
+    if (primaryInput.protocol === 'data:') {
+      const dataUrlStr = primaryInput.toString();
+      return extractFromString(dataUrlStr, mimeType);
     }
-    // HTTP/HTTPS URLs not supported
+    // file/http/https URL sources are not supported.
     return null;
   }
 
   // Case 3: Buffer
-  if (Buffer.isBuffer(p.image)) {
-    const base64 = p.image.toString('base64');
+  if (Buffer.isBuffer(primaryInput)) {
+    const base64 = primaryInput.toString('base64');
     return { data: `data:${mimeType};base64,${base64}`, mimeType };
   }
 
   // Case 4: ArrayBuffer or Uint8Array
-  if (p.image instanceof ArrayBuffer || p.image instanceof Uint8Array) {
-    const buffer = Buffer.from(p.image);
+  if (isBinaryInput(primaryInput)) {
+    const buffer = Buffer.from(primaryInput);
     const base64 = buffer.toString('base64');
     return { data: `data:${mimeType};base64,${base64}`, mimeType };
   }
 
+  if (isFilePart && typeof p.url === 'string') {
+    return extractFromString(p.url, mimeType);
+  }
+
   // Case 5: Legacy 'data' field (base64 string)
-  if (typeof p.data === 'string') {
+  if (!isFilePart && typeof p.data === 'string') {
     return extractFromString(p.data, mimeType);
   }
 
   // Case 6: Legacy 'url' field
-  if (typeof p.url === 'string') {
+  if (!isFilePart && typeof p.url === 'string') {
     return extractFromString(p.url, mimeType);
   }
 
@@ -94,6 +112,11 @@ export function extractImageData(part: unknown): ImageData | null {
 function extractFromString(value: string, fallbackMimeType: string): ImageData | null {
   const trimmed = value.trim();
 
+  // Local file reads are intentionally not supported for security hardening.
+  if (/^file:\/\//i.test(trimmed)) {
+    return null;
+  }
+
   // HTTP/HTTPS URLs are not supported
   if (/^https?:\/\//i.test(trimmed)) {
     return null;
@@ -101,22 +124,36 @@ function extractFromString(value: string, fallbackMimeType: string): ImageData |
 
   // Already a data URL
   if (trimmed.startsWith('data:')) {
-    // Reject non-base64 data URLs (e.g., data:image/svg+xml,<svg...>)
-    // These cannot be decoded by writeImageToTempFile
-    if (!trimmed.includes(';base64,')) {
+    const match = trimmed.match(/^data:([^;,]+);base64,([^,]+)$/);
+    if (!match) {
       return null;
     }
-    // Extract mime type from data URL if present
-    const match = trimmed.match(/^data:([^;,]+)/);
-    const mimeType = match?.[1] || fallbackMimeType;
-    return { data: trimmed, mimeType };
+    const payload = normalizeBase64Payload(match[2] ?? '');
+    if (!payload) {
+      return null;
+    }
+    const mimeType = match[1] || fallbackMimeType;
+    return { data: `data:${mimeType};base64,${payload}`, mimeType };
   }
 
-  // Raw base64 string - wrap in data URL
+  const payload = normalizeBase64Payload(trimmed);
+  if (!payload) {
+    return null;
+  }
+
+  // Raw base64 string - wrap in data URL.
   return {
-    data: `data:${fallbackMimeType};base64,${trimmed}`,
+    data: `data:${fallbackMimeType};base64,${payload}`,
     mimeType: fallbackMimeType,
   };
+}
+
+function isBinaryInput(value: unknown): value is ArrayBuffer | Uint8Array {
+  if (value instanceof ArrayBuffer) {
+    return true;
+  }
+
+  return value instanceof Uint8Array;
 }
 
 /**
@@ -138,7 +175,12 @@ export function writeImageToTempFile(imageData: ImageData): string {
     throw new Error('Invalid data URL format: expected data:[type];base64,[data]');
   }
 
-  const buffer = Buffer.from(base64Match[1], 'base64');
+  const payload = normalizeBase64Payload(base64Match[1] ?? '');
+  if (!payload) {
+    throw new Error('Invalid base64 image payload');
+  }
+
+  const buffer = Buffer.from(payload, 'base64');
   writeFileSync(filePath, buffer);
 
   return filePath;
@@ -182,4 +224,20 @@ function getExtensionFromMimeType(mimeType?: string): string {
   };
 
   return mapping[mimeType.toLowerCase()] || mimeType.split('/')[1] || 'png';
+}
+
+function normalizeBase64Payload(value: string): string | null {
+  const compact = value.replace(/\s+/g, '');
+  if (!compact) return null;
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(compact)) return null;
+  if (compact.length % 4 === 1) return null;
+
+  const padded = compact.padEnd(Math.ceil(compact.length / 4) * 4, '=');
+  try {
+    const normalized = Buffer.from(padded, 'base64').toString('base64');
+    if (normalized !== padded) return null;
+    return padded;
+  } catch {
+    return null;
+  }
 }

@@ -11,9 +11,9 @@ describe('mapMessagesToPrompt', () => {
     ] as any);
 
     expect(promptText).toContain('Be concise.');
-    expect(promptText).toContain('Human: Hi');
+    expect(promptText).toContain('User: Hi');
     expect(promptText).toContain('Assistant: Hello!');
-    expect(promptText).toContain('Human: How are you?');
+    expect(promptText).toContain('User: How are you?');
     expect(images).toEqual([]);
   });
 
@@ -29,14 +29,21 @@ describe('mapMessagesToPrompt', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'See this' },
-            { type: 'image', image: 'data:image/png;base64,abc123' },
+            { type: 'image', image: 'data:image/png;base64,YWJjMTIz' },
           ],
         },
       ] as any);
 
       expect(images).toHaveLength(1);
-      expect(images[0].data).toBe('data:image/png;base64,abc123');
-      expect(warnings?.some((w) => w.toLowerCase().includes('ignored'))).toBeFalsy();
+      expect(images[0]?.data).toBe('data:image/png;base64,YWJjMTIz');
+      expect(
+        warnings?.some(
+          (w) =>
+            w.type === 'other' &&
+            typeof w.message === 'string' &&
+            w.message.toLowerCase().includes('ignored'),
+        ),
+      ).toBeFalsy();
     });
 
     it('extracts multiple images from single message', () => {
@@ -45,15 +52,15 @@ describe('mapMessagesToPrompt', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Compare these' },
-            { type: 'image', image: 'data:image/png;base64,img1' },
-            { type: 'image', image: 'data:image/jpeg;base64,img2', mimeType: 'image/jpeg' },
+            { type: 'image', image: 'data:image/png;base64,aW1nMQ==' },
+            { type: 'image', image: 'data:image/jpeg;base64,aW1nMg==', mimeType: 'image/jpeg' },
           ],
         },
       ] as any);
 
       expect(images).toHaveLength(2);
-      expect(images[0].data).toBe('data:image/png;base64,img1');
-      expect(images[1].data).toBe('data:image/jpeg;base64,img2');
+      expect(images[0]?.data).toBe('data:image/png;base64,aW1nMQ==');
+      expect(images[1]?.data).toBe('data:image/jpeg;base64,aW1nMg==');
     });
 
     it('extracts images from multiple messages', () => {
@@ -62,7 +69,7 @@ describe('mapMessagesToPrompt', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'First image' },
-            { type: 'image', image: 'data:image/png;base64,first' },
+            { type: 'image', image: 'data:image/png;base64,Zmlyc3Q=' },
           ],
         },
         { role: 'assistant', content: 'I see it' },
@@ -70,7 +77,7 @@ describe('mapMessagesToPrompt', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Second image' },
-            { type: 'image', image: 'data:image/png;base64,second' },
+            { type: 'image', image: 'data:image/png;base64,c2Vjb25k' },
           ],
         },
       ] as any);
@@ -90,7 +97,29 @@ describe('mapMessagesToPrompt', () => {
       ] as any);
 
       expect(images).toHaveLength(0);
-      expect(warnings?.some((w) => w.toLowerCase().includes('unsupported'))).toBe(true);
+      expect(
+        warnings?.some(
+          (w) =>
+            w.type === 'unsupported' &&
+            typeof w.details === 'string' &&
+            w.details.toLowerCase().includes('unsupported'),
+        ),
+      ).toBe(true);
+    });
+
+    it('does not claim image attachments when only remote URLs are dropped in exec mode', () => {
+      const { promptText } = mapMessagesToPrompt([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe this image' },
+            { type: 'image', url: 'https://example.com/image.png' },
+          ],
+        },
+      ] as any);
+
+      expect(promptText).not.toContain('[1 image attached]');
+      expect(promptText).not.toContain('[1 images attached]');
     });
 
     it('handles mixed valid and invalid images', () => {
@@ -99,9 +128,9 @@ describe('mapMessagesToPrompt', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Images' },
-            { type: 'image', image: 'data:image/png;base64,valid' },
+            { type: 'image', image: 'data:image/png;base64,dmFsaWQ=' },
             { type: 'image', url: 'https://example.com/invalid.png' },
-            { type: 'image', image: 'data:image/jpeg;base64,alsovalid' },
+            { type: 'image', image: 'data:image/jpeg;base64,YWxzb3ZhbGlk' },
           ],
         },
       ] as any);
@@ -122,7 +151,7 @@ describe('mapMessagesToPrompt', () => {
       ] as any);
 
       expect(images).toHaveLength(1);
-      expect(images[0].data).toBe('data:image/png;base64,iVBORw0KGgo=');
+      expect(images[0]?.data).toBe('data:image/png;base64,iVBORw0KGgo=');
     });
 
     it('handles Buffer image input', () => {
@@ -138,7 +167,24 @@ describe('mapMessagesToPrompt', () => {
       ] as any);
 
       expect(images).toHaveLength(1);
-      expect(images[0].data).toMatch(/^data:image\/png;base64,/);
+      expect(images[0]?.data).toMatch(/^data:image\/png;base64,/);
+    });
+
+    it('handles AI SDK v6 file parts for image input', () => {
+      const buffer = Buffer.from([0x52, 0x49, 0x46, 0x46]); // RIFF
+      const { images } = mapMessagesToPrompt([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'File part image' },
+            { type: 'file', mediaType: 'image/webp', data: buffer },
+          ],
+        },
+      ] as any);
+
+      expect(images).toHaveLength(1);
+      expect(images[0]?.data).toMatch(/^data:image\/webp;base64,/);
+      expect(images[0]?.mimeType).toBe('image/webp');
     });
   });
 });

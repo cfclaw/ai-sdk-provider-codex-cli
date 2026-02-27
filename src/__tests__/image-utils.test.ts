@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import {
   extractImageData,
   writeImageToTempFile,
@@ -66,6 +68,30 @@ describe('extractImageData', () => {
     });
   });
 
+  describe('AI SDK v6 file parts', () => {
+    it('handles image file part with Buffer data', () => {
+      const buffer = Buffer.from([0x52, 0x49, 0x46, 0x46]); // RIFF
+      const result = extractImageData({
+        type: 'file',
+        mediaType: 'image/webp',
+        data: buffer,
+      });
+
+      expect(result?.data).toMatch(/^data:image\/webp;base64,/);
+      expect(result?.mimeType).toBe('image/webp');
+    });
+
+    it('returns null for non-image file part', () => {
+      const result = extractImageData({
+        type: 'file',
+        mediaType: 'application/pdf',
+        data: Buffer.from([0x25, 0x50, 0x44, 0x46]),
+      });
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('Uint8Array input', () => {
     it('handles Uint8Array', () => {
       const arr = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
@@ -128,6 +154,16 @@ describe('extractImageData', () => {
       const result = extractImageData(part);
       expect(result).toBeNull();
     });
+
+    it('rejects file: URL object', () => {
+      const part: ImagePart = {
+        type: 'image',
+        image: new URL(`file://${join(tmpdir(), 'image.png')}`),
+        mimeType: 'image/png',
+      };
+      const result = extractImageData(part);
+      expect(result).toBeNull();
+    });
   });
 
   describe('legacy data field', () => {
@@ -169,6 +205,16 @@ describe('extractImageData', () => {
       const result = extractImageData(part);
       expect(result).toBeNull();
     });
+
+    it('rejects legacy file:// url string', () => {
+      const part: ImagePart = {
+        type: 'image',
+        url: `file://${join(tmpdir(), `codex-image-utils-${Date.now()}-legacy.png`)}`,
+        mimeType: 'image/png',
+      };
+      const result = extractImageData(part);
+      expect(result).toBeNull();
+    });
   });
 
   describe('unsupported formats', () => {
@@ -193,6 +239,15 @@ describe('extractImageData', () => {
     it('returns null for empty part', () => {
       const part: ImagePart = {
         type: 'image',
+      };
+      const result = extractImageData(part);
+      expect(result).toBeNull();
+    });
+
+    it('returns null for invalid raw base64 input', () => {
+      const part: ImagePart = {
+        type: 'image',
+        image: 'not-base64***',
       };
       const result = extractImageData(part);
       expect(result).toBeNull();
@@ -257,6 +312,15 @@ describe('writeImageToTempFile', () => {
     };
 
     expect(() => writeImageToTempFile(imageData)).toThrow('Invalid data URL format');
+  });
+
+  it('throws on invalid base64 image payload', () => {
+    const imageData = {
+      data: 'data:image/png;base64,not-base64***',
+      mimeType: 'image/png',
+    };
+
+    expect(() => writeImageToTempFile(imageData)).toThrow('Invalid base64 image payload');
   });
 });
 

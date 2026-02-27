@@ -1,6 +1,6 @@
 {
   "name": "ai-sdk-provider-codex-cli",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "description": "AI SDK v6 provider for OpenAI Codex CLI (use ChatGPT Plus/Pro subscription)",
   "keywords": [
     "ai-sdk",
@@ -10,8 +10,8 @@
     "language-model",
     "gpt-5",
     "gpt-5.1",
-    "gpt-5.1-codex",
-    "gpt-5.1-codex-max",
+    "gpt-5.3-codex",
+    "gpt-5.2-codex-max",
     "provider"
   ],
   "homepage": "https://github.com/ben-vargas/ai-sdk-provider-codex-cli",
@@ -54,6 +54,9 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "validate": "npm run build && npm run typecheck && npm run format && npm run lint && npm run test",
+    "validate:docs": "node scripts/validate-doc-snippets.mjs",
+    "validate:examples:app-server": "node scripts/validate-app-server-examples.mjs",
+    "validate:full": "npm run validate && npm run validate:docs && npm run validate:examples:app-server",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -64,7 +67,7 @@
     "jsonc-parser": "^3.3.1"
   },
   "optionalDependencies": {
-    "@openai/codex": "^0.87.0"
+    "@openai/codex": "^0.105.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.14.0",

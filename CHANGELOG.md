@@ -5,6 +5,122 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-27
+
+### Added
+
+- **App-server v2 architecture** (`createCodexAppServer`) with persistent JSON-RPC lifecycle and dedicated internal modules:
+  - `AppServerRpcClient` for process management, handshake/version validation, request correlation, reconnect/idle-timeout behavior, and server-request dispatch
+  - `AppServerNotificationRouter` for protocol event routing
+  - `AppServerStreamEmitter` for AI SDK stream part emission
+  - `AppServerSession` for session-scoped actions
+- **Mid-execution session controls**:
+  - `onSessionCreated` callback on app-server settings/provider options
+  - `session.injectMessage(...)` and `session.interrupt()` support
+- **Thread ergonomics for app-server mode**:
+  - `threadMode` (`stateless` default, `persistent` opt-in)
+  - `resume` shorthand for continuing an existing thread
+- **Instruction settings for app-server threads**:
+  - `baseInstructions`
+  - `developerInstructions`
+- **Model discovery API**:
+  - New standalone `listModels()` helper (spawns temporary app-server client and disposes it safely)
+  - Provider method `provider.listModels(...)`
+- **Explicit provider lifecycle aliases**:
+  - `provider.close()`
+  - `provider.dispose()`
+- **Local MCP/tooling helpers**:
+  - `tool(...)`
+  - `createLocalMcpServer(...)`
+  - `createSdkMcpServer(...)`
+- **Stream UX parity improvements for app-server mode**:
+  - reasoning delta support (modern + legacy notification methods)
+  - text/reasoning lifecycle parts (`text-start/end`, `reasoning-start/end`)
+  - approval request stream parts (`tool-approval-request`)
+  - tool output delta mapping (`item/commandExecution/outputDelta`, `item/fileChange/outputDelta`)
+  - optional raw chunk emission via `includeRawChunks`
+- **Remote image URL support in app-server mode**:
+  - model advertises `supportsImageUrls = true`
+  - HTTP/HTTPS image URLs are passed directly as app-server image inputs
+- **Tool execution statistics in finish metadata**:
+  - `providerMetadata['codex-app-server'].toolExecutionStats`
+  - includes total calls, by-type counts, and duration aggregation
+- **App-server compatibility fixtures/tests expanded**:
+  - reasoning delta fixtures
+  - output delta fixtures
+  - additional router behavior/unit coverage
+- **Migration guide added**:
+  - `docs/ai-sdk-v5/migration-app-server-v2.md`
+- **Validation tooling for docs/examples**:
+  - `validate:docs` checks markdown links and example command paths
+  - `validate:examples:app-server` executes app-server examples and validates output expectations
+  - example validation fails on unexpected repository changes/artifacts produced during runs
+- **App-server settings surface (canonical)**:
+  - `approvalPolicy` / `sandboxPolicy`
+  - `effort` / `summary`
+  - `serverRequests` (typed handler map)
+- **Strict app-server provider/options validation**:
+  - legacy app-server alias keys are rejected by app-server validation
+- **App-server default behavior**:
+  - `threadMode` remains `stateless` by default
+  - explicit `threadId` still takes precedence over automatic persistent reuse
+- **Standalone model-list helper naming**:
+  - canonical helper is `listModels()`
+- **Case-tolerant protocol item handling**:
+  - item type routing normalizes casing for safer cross-version compatibility
+- **Examples reorganized and expanded**:
+  - split into `examples/exec/` and `examples/app-server/`
+  - removed redundant `*-gpt-5-codex.mjs` duplicate scripts (canonical examples now cover each flow once)
+  - app-server examples updated to canonical field names
+  - app-server-only examples added (`list-models`, `session-injection`, `local-mcp-tool`, `abort`, `raw-chunks`, `usage-metadata`)
+- **Security: `file://` image URL rejection**: `file://` URLs passed as image inputs are rejected to prevent arbitrary file reads. Local-image path input via the dedicated flow is unaffected. Applies to both exec and app-server providers.
+- **Security: strict base64 validation for image inputs**: Raw base64 strings are validated (charset, length, round-trip decode) before constructing `data:` URLs, preventing silently malformed image payloads.
+- **Security: MCP server name validation**: MCP server names must match `^[A-Za-z0-9_-]+$`. Names containing dots, equals signs, whitespace, or other special characters are rejected at both schema validation and runtime. Applies to both exec and app-server providers.
+- **Security: config override key validation**: Config override keys must match `^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$`. Keys containing equals signs, empty path segments, newlines, or other special characters are rejected. Applies to both exec and app-server providers.
+- **App-server notification schema enforcement**: Notifications that fail schema validation for known methods are dropped with a warning instead of being forwarded to downstream handlers.
+- **App-server thread-scoped notification routing**: Notifications without an explicit `threadId` are not routed to per-thread routers, preventing duplicate event processing in multi-thread scenarios.
+- **App-server `codexErrorInfo` typed validation**: `codexErrorInfo` fields are validated with a full typed Zod union schema (string literals + object variants).
+- **App-server JSON-mode emitter bounded buffering**: The stream emitter in `jsonModeLastTextBlockOnly` mode uses O(1) bounded buffering (current + last-completed block) instead of accumulating all text blocks.
+
+### Fixed
+
+- **JSON-RPC response/error parsing ambiguity**: prevent error responses from being interpreted as successful result responses.
+- **App-server feature gating diagnostics**:
+  - `UnsupportedFeatureError` added for explicit unsupported capability paths (e.g., `model/list` not supported).
+- **Stream/generate parity**:
+  - `doGenerate` now aggregates from the same routed stream/event path as `doStream`, reducing divergence and duplicated event handling logic.
+- **`doGenerate` content completeness (app-server)**:
+  - generation results now retain streamed reasoning/tool parts (`reasoning`, `tool-call`, `tool-result`, plus text) instead of returning text-only content.
+- **`doGenerate` content completeness (exec/legacy provider)**:
+  - generation results now retain streamed tool parts (`tool-call`, `tool-result`, plus text) instead of returning text-only content.
+- **Unknown-usage semantics aligned to AI SDK v3**:
+  - default usage fields now use `undefined` when token counts are unknown (instead of `0`), avoiding false precision in telemetry.
+- **Unsupported-setting warnings coverage**:
+  - added explicit unsupported warning for `maxOutputTokens` (ignored by Codex providers).
+- **Authentication error detection**: `isAuthenticationError` now checks `data.code` for `'401'`/`'unauthorized'`/`'auth'` instead of the unreachable `exitCode === 401` comparison.
+- **App-server crash handler child cleanup**: `handleCrash` now sends `SIGTERM` to the child process before clearing the reference, preventing orphaned processes.
+- **App-server idle-timeout state cleanup**: Idle-timeout shutdown now clears all bookkeeping (thread locks, request contexts, completed turn IDs) so restart state is clean.
+- **App-server cancel-before-turn-id race**: Cancelling a stream after `turn/start` is requested but before `turnId` is assigned now closes the stream immediately and issues a late interrupt when the turn ID arrives, instead of leaving the stream open indefinitely.
+
+### Migration Notes (App-Server Users)
+
+If you use `createCodexAppServer`, migrate to canonical keys:
+
+- `approvalMode` -> `approvalPolicy`
+- `sandboxMode` -> `sandboxPolicy`
+- `reasoningEffort` -> `effort`
+- `reasoningSummary` -> `summary`
+
+`codexExec` / `codexCli` compatibility exports remain available for existing exec-mode users.
+
+### Migration Notes (All Users from 1.0.x)
+
+The following hardening changes apply to both exec and app-server providers:
+
+- `file://` image URL strings are no longer accepted. Use `data:` URLs, raw base64 strings, or binary inputs instead.
+- MCP server names must match `^[A-Za-z0-9_-]+$`. Rename any servers using dots, spaces, or special characters.
+- Config override keys must match `^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$`. Keys with empty segments or special characters must be corrected.
+
 ## [1.0.5] - 2026-01-17
 
 ### Fixed

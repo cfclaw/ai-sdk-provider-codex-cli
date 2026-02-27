@@ -10,9 +10,14 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues)
 [![Latest Release](https://img.shields.io/github/v/release/ben-vargas/ai-sdk-provider-codex-cli?display_name=tag)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/releases/latest)
 
-A community provider for Vercel AI SDK v6 that uses OpenAI's Codex CLI (non‑interactive `codex exec`) to talk to GPT‑5.1 / GPT‑5.2 class models (`gpt-5.1`, `gpt-5.2`, the Codex-specific `gpt-5.1-codex` / `gpt-5.2-codex`, the flagship `*-codex-max`, and the lightweight `*-codex-mini` slugs) with your ChatGPT Plus/Pro subscription. The provider spawns the Codex CLI process, parses its JSONL output, and adapts it to the AI SDK LanguageModelV3 interface. Legacy GPT-5 / GPT-5-codex slugs remain compatible for existing workflows.
+A community provider for Vercel AI SDK v6 that integrates OpenAI's Codex CLI with GPT‑5.1 / GPT‑5.2 class models (`gpt-5.1`, `gpt-5.2`, the Codex-specific `gpt-5.3-codex` / `gpt-5.2-codex`, the flagship `*-codex-max`, and the lightweight `*-codex-mini` slugs) using your ChatGPT Plus/Pro subscription.
 
-- Works with `generateText`, `streamText`, and `generateObject` (native JSON Schema support via `--output-schema`)
+This package ships two provider modes:
+
+- `codexExec`: non-interactive `codex exec` (spawn a new process per call)
+- `codexAppServer`: persistent `codex app-server` JSON-RPC client (shared process, true delta streaming, optional stateful threads)
+
+- Works with `generateText`, `streamText`, and `generateObject`
 - Uses ChatGPT OAuth from `codex login` (tokens in `~/.codex/auth.json`) or `OPENAI_API_KEY`
 - Node-only (spawns a local process); supports CI and local dev
 - **v1.0.0**: AI SDK v6 stable migration with LanguageModelV3 interface
@@ -49,7 +54,7 @@ npm i ai ai-sdk-provider-codex-cli
 npm i ai@^5.0.0 ai-sdk-provider-codex-cli@ai-sdk-v5
 ```
 
-> **⚠️ Codex CLI Version**: Requires Codex CLI **>= 0.42.0** for `--experimental-json` and `--output-schema` support. **>= 0.60.0 recommended** for `gpt-5.1-codex-max` and `xhigh` reasoning effort. If you supply your own Codex CLI (global install or custom `codexPath`/`allowNpx`), check it with `codex --version` and upgrade if needed. The optional dependency `@openai/codex` in this package pulls a compatible version automatically.
+> **⚠️ Codex CLI Version**: Requires Codex CLI **>= 0.105.0** for full support of both provider modes (`codexExec` and `codexAppServer`). If you supply your own Codex CLI (global install or custom `codexPath`), check it with `codex --version` and upgrade if needed. The optional dependency `@openai/codex` in this package pulls a compatible version automatically.
 >
 > ```bash
 > npm i -g @openai/codex@latest
@@ -57,13 +62,13 @@ npm i ai@^5.0.0 ai-sdk-provider-codex-cli@ai-sdk-v5
 
 ## Quick Start
 
-Text generation
+### Exec provider (`codexExec`) — process-per-call
 
 ```js
 import { generateText } from 'ai';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexCli('gpt-5.1-codex', {
+const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-failure',
@@ -77,31 +82,67 @@ const { text } = await generateText({
 console.log(text);
 ```
 
-Streaming
+### App-server provider (`createCodexAppServer`) — persistent process
 
 ```js
 import { streamText } from 'ai';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
-// The provider works with both `gpt-5.1` and `gpt-5.1-codex`; use the latter for
-// the Codex CLI specific slug. Legacy `gpt-5` slugs still work if you need them.
+const provider = createCodexAppServer({
+  defaultSettings: {
+    minCodexVersion: '0.105.0',
+    autoApprove: false,
+    personality: 'pragmatic',
+  },
+});
+
 const { textStream } = await streamText({
-  model: codexCli('gpt-5.1-codex', { allowNpx: true, skipGitRepoCheck: true }),
+  model: provider('gpt-5.3-codex'),
   prompt: 'Write two short lines of encouragement.',
 });
 for await (const chunk of textStream) process.stdout.write(chunk);
+
+await provider.close();
 ```
 
-Object generation (Zod)
+### App-server stateful threads (optional)
+
+By default, `codexAppServer` is stateless (new ephemeral thread per call). To continue a prior conversation, pass `threadId` in `providerOptions['codex-app-server']`.
+
+```js
+import { generateText } from 'ai';
+import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+
+const provider = createCodexAppServer();
+
+const first = await generateText({
+  model: provider('gpt-5.3-codex'),
+  prompt: 'Start a migration checklist.',
+});
+
+const threadId = first.providerMetadata?.['codex-app-server']?.threadId;
+
+const second = await generateText({
+  model: provider('gpt-5.3-codex'),
+  prompt: 'Continue from step 2.',
+  providerOptions: {
+    'codex-app-server': { threadId },
+  },
+});
+
+await provider.close();
+```
+
+### Object generation (Zod)
 
 ```js
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 const schema = z.object({ name: z.string(), age: z.number().int() });
 const { object } = await generateObject({
-  model: codexCli('gpt-5.1-codex', { allowNpx: true, skipGitRepoCheck: true }),
+  model: codexExec('gpt-5.3-codex', { allowNpx: true, skipGitRepoCheck: true }),
   schema,
   prompt: 'Generate a small user profile.',
 });
@@ -111,6 +152,10 @@ console.log(object);
 ## Features
 
 - AI SDK v6 compatible (LanguageModelV3)
+- Dual provider architecture:
+  - `codexExec` / `createCodexExec` for `codex exec`
+  - `codexAppServer` / `createCodexAppServer` for `codex app-server`
+- Backward-compatible aliases: `codexCli` / `createCodexCli` map to exec mode
 - Streaming and non‑streaming
 - **Configurable logging** (v0.5.0+) - Verbose mode, custom loggers, or silent operation
 - **Tool streaming support** (v0.3.0+) - Monitor autonomous tool execution in real-time
@@ -119,7 +164,7 @@ console.log(object);
 - Safe defaults for non‑interactive automation (`on-failure`, `workspace-write`, `--skip-git-repo-check`)
 - Fallback to `npx @openai/codex` when not on PATH (`allowNpx`)
 - Usage tracking from experimental JSON event format
-- **Image support** - Pass images to vision-capable models via `--image` flag
+- **Image support** - Local binary images in both providers, plus remote HTTP/HTTPS image URLs in app-server mode
 
 ### Image Support
 
@@ -127,10 +172,10 @@ The provider supports multimodal (image) inputs for vision-capable models:
 
 ```js
 import { generateText } from 'ai';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-cli';
 import { readFileSync } from 'fs';
 
-const model = codexCli('gpt-5.1-codex', { allowNpx: true, skipGitRepoCheck: true });
+const model = codexExec('gpt-5.3-codex', { allowNpx: true, skipGitRepoCheck: true });
 const imageBuffer = readFileSync('./screenshot.png');
 
 const { text } = await generateText({
@@ -154,13 +199,14 @@ console.log(text);
 - Base64 string (without data URL prefix)
 - `Buffer` / `Uint8Array` / `ArrayBuffer`
 
-**Not supported:**
+**Remote image URLs:**
 
-- HTTP/HTTPS URLs (images must be provided as binary data)
+- `codexExec` mode: HTTP/HTTPS image URLs are not supported (provide binary/image data)
+- `codexAppServer` mode: HTTP/HTTPS image URLs are supported and forwarded to app-server as remote image inputs
 
-Images are written to temporary files and passed to Codex CLI via the `--image` flag. Temp files are automatically cleaned up after the request completes.
+Local image data is written to temporary files and passed to Codex CLI via `--image` (or app-server `localImage`). Temp files are automatically cleaned up after each request.
 
-See [examples/image-support.mjs](examples/image-support.mjs) for a complete working example.
+See [examples/exec/image-support.mjs](examples/exec/image-support.mjs) and [examples/app-server/image-support.mjs](examples/app-server/image-support.mjs) for complete working examples.
 
 ### Tool Streaming (v0.3.0+)
 
@@ -168,10 +214,10 @@ The provider supports comprehensive tool streaming, enabling real-time monitorin
 
 ```js
 import { streamText } from 'ai';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 const result = await streamText({
-  model: codexCli('gpt-5.1-codex', { allowNpx: true, skipGitRepoCheck: true }),
+  model: codexExec('gpt-5.3-codex', { allowNpx: true, skipGitRepoCheck: true }),
   prompt: 'List files and count lines in the largest one',
 });
 
@@ -192,30 +238,35 @@ for await (const part of result.fullStream) {
 - Tool result events with complete output payloads
 - `providerExecuted: true` on all tool calls (Codex executes autonomously, app doesn't need to)
 
-**Limitation:** Real-time output streaming (`output-delta` events) not yet available. Tool outputs delivered in final `tool-result` event. See `examples/streaming-tool-calls.mjs` and `examples/streaming-multiple-tools.mjs` for usage patterns.
+**Current behavior:**
+
+- `codexExec`: tool outputs are delivered in final `tool-result` events.
+- `codexAppServer`: when Codex emits tool output delta notifications, the provider surfaces `tool-result` parts with `result.type === 'output-delta'` during streaming.
+
+See `examples/exec/streaming-tool-calls.mjs`, `examples/exec/streaming-multiple-tools.mjs`, and their app-server counterparts under `examples/app-server/`.
 
 ### Logging Configuration (v0.5.0+)
 
 Control logging verbosity and integrate with your observability stack:
 
 ```js
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 // Default: warn/error only (clean production output)
-const model = codexCli('gpt-5.1-codex', {
+const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
 });
 
 // Verbose mode: enable debug/info logs for troubleshooting
-const verboseModel = codexCli('gpt-5.1-codex', {
+const verboseModel = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   verbose: true, // Shows all log levels
 });
 
 // Custom logger: integrate with Winston, Pino, Datadog, etc.
-const customModel = codexCli('gpt-5.1-codex', {
+const customModel = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   verbose: true,
@@ -228,7 +279,7 @@ const customModel = codexCli('gpt-5.1-codex', {
 });
 
 // Silent: disable all logging
-const silentModel = codexCli('gpt-5.1-codex', {
+const silentModel = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   logger: false, // No logs at all
@@ -244,23 +295,23 @@ const silentModel = codexCli('gpt-5.1-codex', {
 
 **Default Logger:** Adds level tags `[DEBUG]`, `[INFO]`, `[WARN]`, `[ERROR]` to console output. Use a custom logger or `logger: false` if you need different formatting.
 
-See `examples/logging-*.mjs` for complete examples and [docs/ai-sdk-v5/guide.md](docs/ai-sdk-v5/guide.md) for detailed configuration.
+See `examples/exec/logging-*.mjs` and `examples/app-server/logging-*.mjs` for complete examples, and [docs/ai-sdk-v5/guide.md](docs/ai-sdk-v5/guide.md) for detailed configuration.
 
 ### Text Streaming behavior
 
-**Status:** Incremental streaming not currently supported with `--experimental-json` format (expected in future Codex CLI releases)
+**`codexExec` mode:** Incremental streaming is not currently available with `codex exec --experimental-json`.
 
 The `--experimental-json` output format (introduced Sept 25, 2025) currently only emits `item.completed` events with full text content. Incremental streaming via `item.updated` or delta events is not yet implemented by OpenAI.
 
-**What this means:**
+**What this means in exec mode:**
 
 - `streamText()` works functionally but delivers the entire response in a single chunk after generation completes
 - No incremental text deltas—you wait for the full response, then receive it all at once
 - The AI SDK's streaming interface is supported, but actual incremental streaming is not available
 
-**Future support:** The Codex CLI commit (344d4a1d) introducing experimental JSON explicitly notes: "or other item types like `item.output_delta` when we need streaming" and states "more event types and item types to come."
+**`codexAppServer` mode:** supports true incremental text deltas via `item/agentMessage/delta`, so `streamText()` emits progressively as tokens arrive.
 
-When OpenAI adds streaming support, this provider will be updated to handle those events and enable true incremental streaming.
+When OpenAI adds streaming support to `codex exec --experimental-json`, this provider will surface those deltas in exec mode as well.
 
 ## Documentation
 
@@ -269,7 +320,12 @@ When OpenAI adds streaming support, this provider will be updated to handle thos
   - [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) – all settings and how they map to CLI flags
   - [docs/ai-sdk-v5/troubleshooting.md](docs/ai-sdk-v5/troubleshooting.md) – common issues and fixes
   - [docs/ai-sdk-v5/limitations.md](docs/ai-sdk-v5/limitations.md) – known constraints and behavior differences
+  - [docs/ai-sdk-v5/migration-app-server-v2.md](docs/ai-sdk-v5/migration-app-server-v2.md) – app-server v2 migration notes
 - See [examples/](examples/) for runnable scripts covering core usage, streaming, permissions/sandboxing, and object generation.
+- Validation helpers:
+  - `npm run validate:docs` checks markdown links and example command paths
+  - `npm run validate:examples:app-server` runs all app-server examples with intent checks
+  - `npm run validate:full` runs build/type/lint/test plus docs and app-server example validation
 
 ## Authentication
 
@@ -294,14 +350,45 @@ When OpenAI adds streaming support, this provider will be updated to handle thos
 
 See [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) for the full list and examples.
 
+### App-server settings highlights
+
+`createCodexAppServer({ defaultSettings })` accepts app-server specific options:
+
+- `connectionTimeoutMs`: initialize handshake timeout
+- `requestTimeoutMs`: default per-request JSON-RPC timeout
+- `idleTimeoutMs`: close idle app-server process after inactivity
+- `minCodexVersion`: minimum supported app-server version (semver)
+- `includeRawChunks`: emit raw JSON-RPC notifications as `raw` stream parts by default
+- `serverRequests`: typed handlers for server-initiated JSON-RPC requests
+- `autoApprove`: default approval response when no custom handler is provided
+- `persistExtendedHistory`: request extended thread history persistence
+- `threadMode`: `stateless` (default) or `persistent` automatic thread reuse
+- `resume`: shorthand to resume an existing thread id
+- `onSessionCreated`: receive a session object for `injectMessage()` / `interrupt()`
+
+Per-call app-server overrides use `providerOptions['codex-app-server']` (for example `threadId`, `threadMode`, `includeRawChunks`, `personality`, `approvalPolicy`, `sandboxPolicy`, `serverRequests`, `configOverrides`).
+
+Additional app-server helpers:
+
+- `listModels()`: query available models via a temporary app-server process (or use `provider.listModels()` to query through an existing provider/client)
+- `tool()`, `createLocalMcpServer()`, `createSdkMcpServer()`: define and expose local MCP tools
+
+Local MCP security defaults:
+
+- `createLocalMcpServer()` binds to loopback hosts by default and rejects non-loopback `host` values unless you set `allowNonLoopbackHost: true`.
+- `createLocalMcpServer()` generates a per-server bearer token and expects `Authorization: Bearer <token>` on direct HTTP calls. The token is available at `server.config.bearerToken`.
+- `createSdkMcpServer()` propagates this auth config automatically, so provider-level MCP wiring works without extra manual headers.
+- Without `cacheKey`, SDK MCP server/tool function identity participates in persistent keying to avoid conflating closure-dependent tool behavior.
+- Use `createSdkMcpServer({ cacheKey })` when you intentionally recreate equivalent SDK MCP definitions per call and want stable persistent model reuse.
+
 ## Model Parameters & Advanced Options (v0.4.0+)
 
 Control reasoning effort, verbosity, and advanced Codex features at model creation time:
 
 ```ts
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexCli('gpt-5.1-codex', {
+const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   addDirs: ['../shared'],
@@ -353,9 +440,9 @@ values take precedence over constructor defaults while leaving other settings in
 
 ```ts
 import { generateText } from 'ai';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexCli('gpt-5.1-codex', {
+const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   reasoningEffort: 'medium',
   modelVerbosity: 'medium',
@@ -386,6 +473,26 @@ const response = await generateText({
 ```
 
 **Precedence:** `providerOptions['codex-cli']` > constructor `CodexCliSettings` > Codex CLI defaults.
+
+App-server per-call overrides use `providerOptions['codex-app-server']`:
+
+```ts
+import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+
+const appServerProvider = createCodexAppServer();
+
+const response = await generateText({
+  model: appServerProvider('gpt-5.3-codex'),
+  prompt: 'Continue this task.',
+  providerOptions: {
+    'codex-app-server': {
+      threadId: 'thr_existing',
+      personality: 'pragmatic',
+      approvalPolicy: 'on-request',
+    },
+  },
+});
+```
 
 ## Zod Compatibility
 

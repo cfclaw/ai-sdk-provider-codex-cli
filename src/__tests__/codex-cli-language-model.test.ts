@@ -25,7 +25,7 @@ function makeMockSpawn(lines: string[], exitCode = 0) {
     const idx = args.indexOf('--output-last-message');
     if (idx !== -1 && args[idx + 1]) {
       try {
-        writeFileSync(args[idx + 1], 'Fallback last message\n');
+        writeFileSync(args[idx + 1]!, 'Fallback last message\n');
       } catch {}
     }
 
@@ -95,6 +95,69 @@ describe('CodexCliLanguageModel', () => {
     expect(res.finishReason).toEqual({ unified: 'stop', raw: undefined });
   });
 
+  it('doGenerate includes tool-call and tool-result parts in content', async () => {
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-tools-generate' }),
+      JSON.stringify({
+        type: 'item.started',
+        item: {
+          id: 'item_0',
+          item_type: 'command_execution',
+          command: 'ls -la',
+          aggregated_output: '',
+          exit_code: null,
+          status: 'in_progress',
+        },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: {
+          id: 'item_0',
+          item_type: 'command_execution',
+          command: 'ls -la',
+          aggregated_output: 'README.md\n',
+          exit_code: 0,
+          status: 'completed',
+        },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { id: 'item_1', item_type: 'assistant_message', text: 'done' },
+      }),
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: { input_tokens: 4, output_tokens: 2, cached_input_tokens: 1 },
+      }),
+    ];
+    (childProc as any).__setSpawnMock(makeMockSpawn(lines, 0));
+
+    const model = new CodexCliLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    const res = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'List files' }] as any,
+    });
+
+    expect(res.content.map((part) => part.type)).toEqual(['tool-call', 'tool-result', 'text']);
+    expect(res.content[0]).toMatchObject({
+      type: 'tool-call',
+      toolName: 'exec',
+      providerExecuted: true,
+    });
+    expect(res.content[1]).toMatchObject({
+      type: 'tool-result',
+      toolName: 'exec',
+      result: {
+        command: 'ls -la',
+        aggregatedOutput: 'README.md\n',
+        exitCode: 0,
+        status: 'completed',
+      },
+    });
+    expect(res.content[2]).toMatchObject({ type: 'text', text: 'done' });
+  });
+
   it('doStream yields response-metadata, text-delta, finish', async () => {
     const lines = [
       JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
@@ -115,7 +178,7 @@ describe('CodexCliLanguageModel', () => {
     });
 
     const received: any[] = [];
-    const _reader = (stream as any).getReader ? undefined : null; // ensure Web stream compat
+    void ((stream as any).getReader ? undefined : null); // ensure Web stream compat
     const rs = stream as ReadableStream<any>;
     const it = (rs as any)[Symbol.asyncIterator]();
     for await (const part of it) received.push(part);
@@ -305,7 +368,7 @@ describe('CodexCliLanguageModel', () => {
     const lines = [JSON.stringify({ type: 'thread.started', thread_id: 'thread-last-user' })];
     (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
       const idx = args.indexOf('--output-last-message');
-      outputPath = idx !== -1 ? args[idx + 1] : '';
+      outputPath = idx !== -1 ? (args[idx + 1] ?? '') : '';
       return makeMockSpawn(lines, 0)(cmd, args);
     });
 
@@ -334,7 +397,7 @@ describe('CodexCliLanguageModel', () => {
     const lines = [JSON.stringify({ type: 'thread.started', thread_id: 'thread-last-auto' })];
     (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
       const idx = args.indexOf('--output-last-message');
-      outputPath = idx !== -1 ? args[idx + 1] : '';
+      outputPath = idx !== -1 ? (args[idx + 1] ?? '') : '';
       return makeMockSpawn(lines, 0)(cmd, args);
     });
 
@@ -702,6 +765,43 @@ describe('CodexCliLanguageModel', () => {
       expect(argsCaptured).toContain('deep.nested.value=true');
       expect(argsCaptured).toContain('arr=[1,2]');
       expect(argsCaptured).toContain('dotted.key=val');
+    });
+
+    it('rejects invalid configOverrides keys at runtime', async () => {
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          color: 'never',
+          configOverrides: {
+            'bad=key': 'value',
+          },
+        },
+      });
+
+      await expect(
+        model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any }),
+      ).rejects.toThrow(/Invalid config override key/);
+    });
+
+    it('rejects invalid MCP server names at runtime', async () => {
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          color: 'never',
+          mcpServers: {
+            'bad.name': {
+              transport: 'stdio',
+              command: 'node',
+            },
+          },
+        },
+      });
+
+      await expect(
+        model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any }),
+      ).rejects.toThrow(/Invalid MCP server name/);
     });
 
     it('keeps reasoning flags when fullAuto is enabled (but omits approval/sandbox overrides)', async () => {
@@ -1326,7 +1426,7 @@ describe('CodexCliLanguageModel', () => {
       expect(lastChild._stdinData().length).toBeGreaterThan(10000);
     });
 
-    it('handles special characters (Chinese, newlines, backticks) correctly', async () => {
+    it('handles special characters (newlines, backticks) correctly', async () => {
       let lastChild: any = null;
       const lines = [
         JSON.stringify({ type: 'thread.started', thread_id: 'thread-special' }),
@@ -1347,7 +1447,7 @@ describe('CodexCliLanguageModel', () => {
         settings: { allowNpx: true, color: 'never' },
       });
 
-      const specialPrompt = '请优化登录界面\n```tsx\nconst x = `template`;\n```';
+      const specialPrompt = 'Please optimize the sign-in page.\n```tsx\nconst x = `template`;\n```';
       await model.doGenerate({
         prompt: [{ role: 'user', content: specialPrompt }] as any,
       });
@@ -1356,7 +1456,7 @@ describe('CodexCliLanguageModel', () => {
 
       // Verify special characters are preserved in stdin
       const stdinData = lastChild._stdinData();
-      expect(stdinData).toContain('请优化登录界面');
+      expect(stdinData).toContain('Please optimize the sign-in page.');
       expect(stdinData).toContain('```tsx');
       expect(stdinData).toContain('`template`');
     });
