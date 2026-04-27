@@ -23,24 +23,22 @@ EmbeddingModelV3 and ImageModelV3: Interfaces for embeddings and image generatio
 ProviderV3
 The ProviderV3 interface acts as the entry point:
 
-
 interface ProviderV3 {
-  languageModel(modelId: string): LanguageModelV3;
-  .embeddingModel(modelId: string): EmbeddingModelV3<string>;
-  imageModel(modelId: string): ImageModelV3;
+languageModel(modelId: string): LanguageModelV3;
+.embeddingModel(modelId: string): EmbeddingModelV3<string>;
+imageModel(modelId: string): ImageModelV3;
 }
 LanguageModelV3
 The LanguageModelV3 interface defines the methods your provider must implement:
 
-
 interface LanguageModelV3 {
-  specificationVersion: 'V3';
-  provider: string;
-  modelId: string;
-  supportedUrls: Record<string, RegExp[]>;
+specificationVersion: 'V3';
+provider: string;
+modelId: string;
+supportedUrls: Record<string, RegExp[]>;
 
-  doGenerate(options: LanguageModelV3CallOptions): Promise<GenerateResult>;
-  doStream(options: LanguageModelV3CallOptions): Promise<StreamResult>;
+doGenerate(options: LanguageModelV3CallOptions): Promise<GenerateResult>;
+doStream(options: LanguageModelV3CallOptions): Promise<StreamResult>;
 }
 Key aspects:
 
@@ -58,61 +56,58 @@ The V3 specification supports five distinct content types that models can genera
 Text Content
 The fundamental building block for all text generation:
 
-
 type LanguageModelV3Text = {
-  type: 'text';
-  text: string;
+type: 'text';
+text: string;
 };
 This is used for standard model responses, system messages, and any plain text output.
 
 Tool Calls
 Enable models to invoke functions with structured arguments:
 
-
 type LanguageModelV3ToolCall = {
-  type: 'tool-call';
-  toolCallType: 'function';
-  toolCallId: string;
-  toolName: string;
-  args: string;
+type: 'tool-call';
+toolCallType: 'function';
+toolCallId: string;
+toolName: string;
+args: string;
 };
 The toolCallId is crucial for correlating tool results back to their calls, especially in streaming scenarios.
 
 File Generation
 Support for multimodal output generation:
 
-
 type LanguageModelV3File = {
-  type: 'file';
-  mediaType: string; // IANA media type (e.g., 'image/png', 'audio/mp3')
-  data: string | Uint8Array; // Generated file data as base64 encoded strings or binary data
+type: 'file';
+mediaType: string; // IANA media type (e.g., 'image/png', 'audio/mp3')
+data: string | Uint8Array; // Generated file data as base64 encoded strings or binary data
 };
 This enables models to generate images, audio, documents, and other file types directly.
 
 Reasoning
 Dedicated support for chain-of-thought reasoning (essential for models like OpenAI's o1):
 
-
 type LanguageModelV3Reasoning = {
-  type: 'reasoning';
-  text: string;
+type: 'reasoning';
+text: string;
 
-  /**
-   * Optional provider-specific metadata for the reasoning part.
-   */
+/\*\*
+
+- Optional provider-specific metadata for the reasoning part.
+  \*/
   providerMetadata?: SharedV2ProviderMetadata;
-};
-Reasoning content is tracked separately from regular text, allowing for proper token accounting and UI presentation.
+  };
+  Reasoning content is tracked separately from regular text, allowing for proper token accounting and UI presentation.
 
 Sources
 
 type LanguageModelV3Source = {
-  type: 'source';
-  sourceType: 'url';
-  id: string;
-  url: string;
-  title?: string;
-  providerMetadata?: SharedV2ProviderMetadata;
+type: 'source';
+sourceType: 'url';
+id: string;
+url: string;
+title?: string;
+providerMetadata?: SharedV2ProviderMetadata;
 };
 LanguageModelV3Prompt
 The V3 prompt format (LanguageModelV3Prompt) is designed as a flexible message array that supports multimodal inputs:
@@ -122,18 +117,14 @@ Each message has a specific role with allowed content types:
 
 System: Model instructions (text only)
 
-
 { role: 'system', content: string }
 User: Human inputs supporting text and files
-
 
 { role: 'user', content: Array<LanguageModelV3TextPart | LanguageModelV3FilePart> }
 Assistant: Model outputs with full content type support
 
-
 { role: 'assistant', content: Array<LanguageModelV3TextPart | LanguageModelV3FilePart | LanguageModelV3ReasoningPart | LanguageModelV3ToolCallPart> }
 Tool: Results from tool executions
-
 
 { role: 'tool', content: Array<LanguageModelV3ToolResultPart> }
 Prompt Parts
@@ -148,31 +139,28 @@ Let's explore each prompt part type:
 Text Parts
 The most basic prompt part, containing plain text content:
 
-
 interface LanguageModelV3TextPart {
-  type: 'text';
-  text: string;
-  providerOptions?: SharedV2ProviderOptions;
+type: 'text';
+text: string;
+providerOptions?: SharedV2ProviderOptions;
 }
 Reasoning Parts
 Used in assistant messages to capture the model's reasoning process:
 
-
 interface LanguageModelV3ReasoningPart {
-  type: 'reasoning';
-  text: string;
-  providerOptions?: SharedV2ProviderOptions;
+type: 'reasoning';
+text: string;
+providerOptions?: SharedV2ProviderOptions;
 }
 File Parts
 Enable multimodal inputs by including files in prompts:
 
-
 interface LanguageModelV3FilePart {
-  type: 'file';
-  filename?: string;
-  data: LanguageModelV3DataContent;
-  mediaType: string;
-  providerOptions?: SharedV2ProviderOptions;
+type: 'file';
+filename?: string;
+data: LanguageModelV3DataContent;
+mediaType: string;
+providerOptions?: SharedV2ProviderOptions;
 }
 The data field offers flexibility:
 
@@ -182,31 +170,29 @@ URL: Reference to external content (if supported by provider via supportedUrls)
 Tool Call Parts
 Represent tool calls made by the assistant:
 
-
 interface LanguageModelV3ToolCallPart {
-  type: 'tool-call';
-  toolCallId: string;
-  toolName: string;
-  args: unknown;
-  providerOptions?: SharedV2ProviderOptions;
+type: 'tool-call';
+toolCallId: string;
+toolName: string;
+args: unknown;
+providerOptions?: SharedV2ProviderOptions;
 }
 Tool Result Parts
 Contain the results of executed tool calls:
 
-
 interface LanguageModelV3ToolResultPart {
-  type: 'tool-result';
-  toolCallId: string;
-  toolName: string;
-  result: unknown;
-  isError?: boolean;
-  content?: Array<{
-    type: 'text' | 'image';
-    text?: string;
-    data?: string; // base64 encoded image data
-    mediaType?: string;
-  }>;
-  providerOptions?: SharedV2ProviderOptions;
+type: 'tool-result';
+toolCallId: string;
+toolName: string;
+result: unknown;
+isError?: boolean;
+content?: Array<{
+type: 'text' | 'image';
+text?: string;
+data?: string; // base64 encoded image data
+mediaType?: string;
+}>;
+providerOptions?: SharedV2ProviderOptions;
 }
 The optional content field enables rich tool results including images, providing more flexibility than the basic result field.
 
@@ -227,7 +213,6 @@ tool-call-delta: Incremental updates for tool call arguments
 reasoning-part-finish: Explicit marker for reasoning section completion
 Example stream sequence:
 
-
 { type: 'stream-start', warnings: [] }
 { type: 'text', text: 'Hello' }
 { type: 'text', text: ' world' }
@@ -237,13 +222,12 @@ Example stream sequence:
 Usage Tracking
 Enhanced usage information:
 
-
 type LanguageModelV3Usage = {
-  inputTokens: number | undefined;
-  outputTokens: number | undefined;
-  totalTokens: number | undefined;
-  reasoningTokens?: number | undefined;
-  cachedInputTokens?: number | undefined;
+inputTokens: number | undefined;
+outputTokens: number | undefined;
+totalTokens: number | undefined;
+reasoningTokens?: number | undefined;
+cachedInputTokens?: number | undefined;
 };
 Tools
 The V3 specification supports two types of tools:
@@ -251,51 +235,46 @@ The V3 specification supports two types of tools:
 Function Tools
 Standard user-defined functions with JSON Schema validation:
 
-
 type LanguageModelV3FunctionTool = {
-  type: 'function';
-  name: string;
-  description?: string;
-  parameters: JSONSchema7; // Full JSON Schema support
+type: 'function';
+name: string;
+description?: string;
+parameters: JSONSchema7; // Full JSON Schema support
 };
 Provider-Defined Client Tools
 Native provider capabilities exposed as tools:
 
-
 export type LanguageModelV3ProviderClientDefinedTool = {
-  type: 'provider-defined-client';
-  id: string; // e.g., 'anthropic.computer-use'
-  name: string; // Human-readable name
-  args: Record<string, unknown>;
+type: 'provider-defined-client';
+id: string; // e.g., 'anthropic.computer-use'
+name: string; // Human-readable name
+args: Record<string, unknown>;
 };
 Tool choice can be controlled via:
-
 
 toolChoice: 'auto' | 'none' | 'required' | { type: 'tool', toolName: string };
 Native URL Support
 Providers can declare URLs they can access directly:
 
-
 supportedUrls: {
-  'image/*': [/^https:\/\/cdn\.example\.com\/.*/],
-  'application/pdf': [/^https:\/\/docs\.example\.com\/.*/],
-  'audio/*': [/^https:\/\/media\.example\.com\/.*/]
+'image/_': [/^https:\/\/cdn\.example\.com\/._/],
+'application/pdf': [/^https:\/\/docs\.example\.com\/.*/],
+'audio/_': [/^https:\/\/media\.example\.com\/._/]
 }
 The AI SDK checks these patterns before downloading any URL-based content.
 
 Provider Options
 The specification includes a flexible system for provider-specific features without breaking the standard interface:
 
-
 providerOptions: {
-  anthropic: {
-    cacheControl: true,
-    maxTokens: 4096
-  },
-  openai: {
-    parallelToolCalls: false,
-    responseFormat: { type: 'json_object' }
-  }
+anthropic: {
+cacheControl: true,
+maxTokens: 4096
+},
+openai: {
+parallelToolCalls: false,
+responseFormat: { type: 'json_object' }
+}
 }
 Provider options can be specified at multiple levels:
 
@@ -319,7 +298,6 @@ Finish Reasons: Clear indication of why generation stopped:
 Provider Implementation Guide
 To implement a custom language model provider, you'll need to install the required packages:
 
-
 npm install @ai-sdk/provider @ai-sdk/provider-utils
 Implementing a custom language model provider involves several steps:
 
@@ -336,76 +314,80 @@ Start by creating a provider.ts file that exports a factory function and a defau
 provider.ts
 
 import {
-  generateId,
-  loadApiKey,
-  withoutTrailingSlash,
+generateId,
+loadApiKey,
+withoutTrailingSlash,
 } from '@ai-sdk/provider-utils';
 import { ProviderV3 } from '@ai-sdk/provider';
 import { CustomChatLanguageModel } from './custom-chat-language-model';
 
 // Define your provider interface extending ProviderV3
 interface CustomProvider extends ProviderV3 {
-  (modelId: string, settings?: CustomChatSettings): CustomChatLanguageModel;
+(modelId: string, settings?: CustomChatSettings): CustomChatLanguageModel;
 
-  // Add specific methods for different model types
-  languageModel(
-    modelId: string,
-    settings?: CustomChatSettings,
-  ): CustomChatLanguageModel;
+// Add specific methods for different model types
+languageModel(
+modelId: string,
+settings?: CustomChatSettings,
+): CustomChatLanguageModel;
 }
 
 // Provider settings
 interface CustomProviderSettings {
-  /**
-   * Base URL for API calls
-   */
+/\*\*
+
+- Base URL for API calls
+  \*/
   baseURL?: string;
 
-  /**
-   * API key for authentication
-   */
+/\*\*
+
+- API key for authentication
+  \*/
   apiKey?: string;
 
-  /**
-   * Custom headers for requests
-   */
+/\*\*
+
+- Custom headers for requests
+  \*/
   headers?: Record<string, string>;
-}
+  }
 
 // Factory function to create provider instance
 function createCustom(options: CustomProviderSettings = {}): CustomProvider {
-  const createChatModel = (
-    modelId: string,
-    settings: CustomChatSettings = {},
-  ) =>
-    new CustomChatLanguageModel(modelId, settings, {
-      provider: 'custom',
-      baseURL:
-        withoutTrailingSlash(options.baseURL) ?? 'https://api.custom.ai/v1',
-      headers: () => ({
-        Authorization: `Bearer ${loadApiKey({
+const createChatModel = (
+modelId: string,
+settings: CustomChatSettings = {},
+) =>
+new CustomChatLanguageModel(modelId, settings, {
+provider: 'custom',
+baseURL:
+withoutTrailingSlash(options.baseURL) ?? 'https://api.custom.ai/v1',
+headers: () => ({
+Authorization: `Bearer ${loadApiKey({
           apiKey: options.apiKey,
           environmentVariableName: 'CUSTOM_API_KEY',
           description: 'Custom Provider',
         })}`,
-        ...options.headers,
-      }),
-      generateId: options.generateId ?? generateId,
-    });
+...options.headers,
+}),
+generateId: options.generateId ?? generateId,
+});
 
-  const provider = function (modelId: string, settings?: CustomChatSettings) {
-    if (new.target) {
-      throw new Error(
-        'The model factory function cannot be called with the new keyword.',
-      );
-    }
+const provider = function (modelId: string, settings?: CustomChatSettings) {
+if (new.target) {
+throw new Error(
+'The model factory function cannot be called with the new keyword.',
+);
+}
 
     return createChatModel(modelId, settings);
-  };
 
-  provider.languageModel = createChatModel;
+};
 
-  return provider as CustomProvider;
+provider.languageModel = createChatModel;
+
+return provider as CustomProvider;
 }
 
 // Export default provider instance
@@ -419,23 +401,23 @@ import { LanguageModelV3, LanguageModelV3CallOptions } from '@ai-sdk/provider';
 import { postJsonToApi } from '@ai-sdk/provider-utils';
 
 class CustomChatLanguageModel implements LanguageModelV3 {
-  readonly specificationVersion = 'V3';
-  readonly provider: string;
-  readonly modelId: string;
+readonly specificationVersion = 'V3';
+readonly provider: string;
+readonly modelId: string;
 
-  constructor(
-    modelId: string,
-    settings: CustomChatSettings,
-    config: CustomChatConfig,
-  ) {
-    this.provider = config.provider;
-    this.modelId = modelId;
-    // Initialize with settings and config
-  }
+constructor(
+modelId: string,
+settings: CustomChatSettings,
+config: CustomChatConfig,
+) {
+this.provider = config.provider;
+this.modelId = modelId;
+// Initialize with settings and config
+}
 
-  // Convert AI SDK prompt to provider format
-  private getArgs(options: LanguageModelV3CallOptions) {
-    const warnings: SharedV3Warning[] = [];
+// Convert AI SDK prompt to provider format
+private getArgs(options: LanguageModelV3CallOptions) {
+const warnings: SharedV3Warning[] = [];
 
     // Map messages to provider format
     const messages = this.convertToProviderMessages(options.prompt);
@@ -457,10 +439,11 @@ class CustomChatLanguageModel implements LanguageModelV3 {
     };
 
     return { args: body, warnings };
-  }
 
-  async doGenerate(options: LanguageModelV3CallOptions) {
-    const { args, warnings } = this.getArgs(options);
+}
+
+async doGenerate(options: LanguageModelV3CallOptions) {
+const { args, warnings } = this.getArgs(options);
 
     // Make API call
     const response = await postJsonToApi({
@@ -506,10 +489,11 @@ class CustomChatLanguageModel implements LanguageModelV3 {
       response: { body: response },
       warnings,
     };
-  }
 
-  async doStream(options: LanguageModelV3CallOptions) {
-    const { args, warnings } = this.getArgs(options);
+}
+
+async doStream(options: LanguageModelV3CallOptions) {
+const { args, warnings } = this.getArgs(options);
 
     // Create streaming response
     const response = await fetch(`${this.config.baseURL}/chat/completions`, {
@@ -529,14 +513,15 @@ class CustomChatLanguageModel implements LanguageModelV3 {
       .pipeThrough(this.createTransformer(warnings));
 
     return { stream, warnings };
-  }
 
-  // Supported URL patterns for native file handling
-  get supportedUrls() {
-    return {
-      'image/*': [/^https:\/\/example\.com\/images\/.*/],
-    };
-  }
+}
+
+// Supported URL patterns for native file handling
+get supportedUrls() {
+return {
+'image/_': [/^https:\/\/example\.com\/images\/._/],
+};
+}
 }
 Step 3: Implement Message Conversion
 Map AI SDK messages to your provider's format:
@@ -544,10 +529,10 @@ Map AI SDK messages to your provider's format:
 custom-chat-language-model.ts#L50-100
 
 private convertToProviderMessages(prompt: LanguageModelV3Prompt) {
-  return prompt.map((message) => {
-    switch (message.role) {
-      case 'system':
-        return { role: 'system', content: message.content };
+return prompt.map((message) => {
+switch (message.role) {
+case 'system':
+return { role: 'system', content: message.content };
 
       case 'user':
         return {
@@ -580,7 +565,8 @@ private convertToProviderMessages(prompt: LanguageModelV3Prompt) {
       default:
         throw new Error(`Unsupported message role: ${message.role}`);
     }
-  });
+
+});
 }
 Step 4: Implement Streaming
 Create a streaming transformer that converts provider chunks to AI SDK stream parts:
@@ -588,15 +574,15 @@ Create a streaming transformer that converts provider chunks to AI SDK stream pa
 custom-chat-language-model.ts#L150-200
 
 private createTransformer(warnings: SharedV3Warning[]) {
-  let isFirstChunk = true;
+let isFirstChunk = true;
 
-  return new TransformStream<ParsedChunk, LanguageModelV3StreamPart>({
-    async transform(chunk, controller) {
-      // Send warnings with first chunk
-      if (isFirstChunk) {
-        controller.enqueue({ type: 'stream-start', warnings });
-        isFirstChunk = false;
-      }
+return new TransformStream<ParsedChunk, LanguageModelV3StreamPart>({
+async transform(chunk, controller) {
+// Send warnings with first chunk
+if (isFirstChunk) {
+controller.enqueue({ type: 'stream-start', warnings });
+isFirstChunk = false;
+}
 
       // Handle different chunk types
       if (chunk.choices?.[0]?.delta?.content) {
@@ -631,7 +617,8 @@ private createTransformer(warnings: SharedV3Warning[]) {
         });
       }
     },
-  });
+
+});
 }
 Step 5: Handle Errors
 Use standardized AI SDK errors for consistent error handling:
@@ -639,14 +626,14 @@ Use standardized AI SDK errors for consistent error handling:
 custom-chat-language-model.ts#L250-280
 
 import {
-  APICallError,
-  InvalidResponseDataError,
-  TooManyRequestsError,
+APICallError,
+InvalidResponseDataError,
+TooManyRequestsError,
 } from '@ai-sdk/provider';
 
 private handleError(error: unknown): never {
-  if (error instanceof Response) {
-    const status = error.status;
+if (error instanceof Response) {
+const status = error.status;
 
     if (status === 429) {
       throw new TooManyRequestsError({
@@ -661,9 +648,10 @@ private handleError(error: unknown): never {
       cause: error,
       isRetryable: status >= 500 && status < 600,
     });
-  }
 
-  throw error;
+}
+
+throw error;
 }
 Next Steps
 Dig into the Language Model Specification V3

@@ -84,3 +84,45 @@ export {
   isUnsupportedFeatureError,
   UnsupportedFeatureError,
 } from './errors.js';
+
+// Direct provider — talks straight to chatgpt.com/backend-api over OAuth,
+// no Codex CLI binary required.
+export { createCodexDirect, codexDirect } from './direct/codex-direct-provider.js';
+export type { CodexDirectProvider } from './direct/codex-direct-provider.js';
+export { CodexDirectLanguageModel } from './direct/codex-direct-language-model.js';
+export type {
+  CodexDirectSettings,
+  CodexDirectProviderSettings,
+  CodexDirectProviderOptions,
+} from './direct/types.js';
+export {
+  CodexAuthManager,
+  type CodexAuthManagerOptions,
+  type CodexAuthSource,
+  type OAuthStatePersister,
+} from './direct/auth-manager.js';
+
+// OAuth flows (device-code + browser PKCE) plus auth-file helpers.
+export {
+  initiateDeviceAuth,
+  pollDeviceAuth,
+  pollDeviceAuthUntilComplete,
+  startCodexOAuthFlow,
+  exchangeCodeManually,
+  refreshCodexToken,
+  loadCodexAuth,
+  saveCodexAuth,
+  defaultAuthFilePath,
+  extractAccountId,
+  decodeJwtPayload,
+  DEFAULT_OAUTH_ENDPOINTS,
+} from './oauth/index.js';
+export type {
+  CodexOAuthState,
+  CodexOAuthEndpoints,
+  CodexOAuthResult,
+  DeviceAuthInitResult,
+  DeviceAuthPollResult,
+  PollUntilCompleteOptions,
+  BrowserAuthOptions,
+} from './oauth/index.js';

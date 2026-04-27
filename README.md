@@ -12,14 +12,16 @@
 
 A community provider for Vercel AI SDK v6 that integrates OpenAI's Codex CLI with GPT‑5.1 / GPT‑5.2 class models (`gpt-5.1`, `gpt-5.2`, the Codex-specific `gpt-5.3-codex` / `gpt-5.2-codex`, the flagship `*-codex-max`, and the lightweight `*-codex-mini` slugs) using your ChatGPT Plus/Pro subscription.
 
-This package ships two provider modes:
+This package ships three provider modes:
 
+- `codexDirect` _(new)_: talks straight to `chatgpt.com/backend-api/codex/responses` over OAuth — **no Codex CLI binary required**. Bundled device-code and browser-PKCE flows for first-time login.
 - `codexExec`: non-interactive `codex exec` (spawn a new process per call)
 - `codexAppServer`: persistent `codex app-server` JSON-RPC client (shared process, true delta streaming, optional stateful threads)
 
 - Works with `generateText`, `streamText`, and `generateObject`
 - Uses ChatGPT OAuth from `codex login` (tokens in `~/.codex/auth.json`) or `OPENAI_API_KEY`
-- Node-only (spawns a local process); supports CI and local dev
+- Node-only; `codexDirect` is pure HTTP (no child processes), the other modes spawn a local Codex CLI
+- **v1.1.0**: Adds `codexDirect` provider plus device-code / browser PKCE login helpers
 - **v1.0.0**: AI SDK v6 stable migration with LanguageModelV3 interface
 - **v0.5.0**: Adds comprehensive logging system with verbose mode and custom logger support
 - **v0.3.0**: Adds comprehensive tool streaming support for monitoring autonomous tool execution
@@ -61,6 +63,63 @@ npm i ai@^5.0.0 ai-sdk-provider-codex-cli@ai-sdk-v5
 > ```
 
 ## Quick Start
+
+### Direct provider (`codexDirect`) — no CLI binary required
+
+Reads OAuth tokens from `~/.codex/auth.json` (the same file `codex login` writes), refreshes them when they expire, and talks straight to the ChatGPT backend over HTTPS.
+
+```js
+import { generateText } from 'ai';
+import { codexDirect } from 'ai-sdk-provider-codex-cli';
+
+const { text } = await generateText({
+  model: codexDirect('gpt-5.3-codex'),
+  prompt: 'Reply with a single word: hello.',
+});
+console.log(text);
+```
+
+If you don't already have `~/.codex/auth.json`, run a login flow yourself — no `codex` binary needed:
+
+```js
+import {
+  initiateDeviceAuth,
+  pollDeviceAuthUntilComplete,
+  saveCodexAuth,
+} from 'ai-sdk-provider-codex-cli';
+
+const init = await initiateDeviceAuth();
+console.log(`Open ${init.verificationUrl} and enter code: ${init.userCode}`);
+
+const result = await pollDeviceAuthUntilComplete(init);
+if (result.status === 'success') {
+  await saveCodexAuth(result.tokens); // persists to ~/.codex/auth.json
+}
+```
+
+For desktop apps with a browser available, use `startCodexOAuthFlow()` instead — it returns an authorization URL plus a promise that resolves once the user completes the local-callback flow on `127.0.0.1:1455`.
+
+You can also pass tokens explicitly (e.g. from your own database):
+
+```js
+import { createCodexDirect } from 'ai-sdk-provider-codex-cli';
+
+const provider = createCodexDirect({
+  auth: {
+    state: {
+      accessToken,
+      refreshToken,
+      expires: Date.now() + 3600 * 1000,
+      accountId, // optional — auto-extracted from the JWT if omitted
+    },
+  },
+  persist: async (state) => {
+    // store the rotated tokens wherever you keep them
+  },
+});
+
+const model = provider('gpt-5.3-codex');
+```
 
 ### Exec provider (`codexExec`) — process-per-call
 
