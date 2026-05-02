@@ -14,13 +14,13 @@
     "gpt-5.2-codex-max",
     "provider"
   ],
-  "homepage": "https://github.com/cfclaw/ai-sdk-provider-codex-direct",
+  "homepage": "https://github.com/cfclaw/ai-sdk-provider-codex-cli",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cfclaw/ai-sdk-provider-codex-direct.git"
+    "url": "git+https://github.com/cfclaw/ai-sdk-provider-codex-cli.git"
   },
   "bugs": {
-    "url": "https://github.com/cfclaw/ai-sdk-provider-codex-direct/issues"
+    "url": "https://github.com/cfclaw/ai-sdk-provider-codex-cli/issues"
   },
   "license": "MIT",
   "author": "Carter Feldman",
