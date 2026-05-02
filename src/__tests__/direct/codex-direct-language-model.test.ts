@@ -235,4 +235,225 @@ describe('CodexDirectLanguageModel', () => {
     const features = result.warnings.map((w) => (w.type === 'unsupported' ? w.feature : 'other'));
     expect(features).toEqual(expect.arrayContaining(['temperature', 'topP', 'seed']));
   });
+
+  it('always sends include:[reasoning.encrypted_content] in the request body', async () => {
+    let captured: Record<string, unknown> | undefined;
+    const fakeFetch: typeof fetch = async (_url, init) => {
+      captured = JSON.parse(String((init as RequestInit).body));
+      return sseStream([
+        { type: 'response.completed', response: { status: 'completed', usage: {} } },
+        '[DONE]',
+      ]);
+    };
+    const model = new CodexDirectLanguageModel({
+      modelId: 'gpt-5.3-codex',
+      authManager: makeManager(),
+      fetch: fakeFetch,
+    });
+    await model.doGenerate({ prompt: basicPrompt('hi') } as LanguageModelV3CallOptions);
+    expect(captured?.include).toEqual(['reasoning.encrypted_content']);
+  });
+
+  it('refreshes the access token and retries once on 401', async () => {
+    let call = 0;
+    const tokensSeen: string[] = [];
+    const fakeFetch: typeof fetch = async (url, init) => {
+      const u = String(url);
+      if (u.endsWith('/oauth/token')) {
+        // Refresh response — issue a brand new access token.
+        const renewed = makeJwt({ chatgpt_account_id: 'acc-renewed' });
+        return new Response(
+          JSON.stringify({ access_token: renewed, refresh_token: 'r2', expires_in: 3600 }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      // /codex/responses
+      call++;
+      const headers = (init as RequestInit).headers as Record<string, string>;
+      tokensSeen.push(headers.Authorization ?? '');
+      if (call === 1) return new Response('revoked', { status: 401 });
+      return sseStream([
+        { type: 'response.completed', response: { status: 'completed', usage: {} } },
+        '[DONE]',
+      ]);
+    };
+
+    // Auth manager wired to the same fakeFetch so the 401 retry path's
+    // forceRefresh hits the stubbed /oauth/token endpoint, not the real one.
+    const manager = new CodexAuthManager({
+      source: {
+        state: {
+          accessToken: makeJwt({ chatgpt_account_id: 'acc-stale' }),
+          refreshToken: 'r1',
+          accountId: 'acc-stale',
+          expires: Date.now() + 60 * 60_000,
+        },
+      },
+      persist: false,
+      endpoints: ENDPOINTS,
+      fetch: fakeFetch,
+    });
+
+    const model = new CodexDirectLanguageModel({
+      modelId: 'gpt-5.3-codex',
+      authManager: manager,
+      fetch: fakeFetch,
+    });
+
+    const result = await model.doGenerate({
+      prompt: basicPrompt('hi'),
+    } as LanguageModelV3CallOptions);
+
+    // Two POSTs to /codex/responses (initial + retry) with different tokens.
+    expect(call).toBe(2);
+    expect(tokensSeen[0]).not.toBe(tokensSeen[1]);
+    expect(result.finishReason.unified).toBe('stop');
+  });
+
+  it('uses the server response id in response-metadata and bubbles it on finish', async () => {
+    const fakeFetch: typeof fetch = async () =>
+      sseStream([
+        { type: 'response.created', response: { id: 'resp_abc123', model: 'gpt-5.3-codex' } },
+        { type: 'response.output_text.delta', delta: 'hi' },
+        {
+          type: 'response.completed',
+          response: { id: 'resp_abc123', status: 'completed', usage: {} },
+        },
+        '[DONE]',
+      ]);
+
+    const model = new CodexDirectLanguageModel({
+      modelId: 'gpt-5.3-codex',
+      authManager: makeManager(),
+      fetch: fakeFetch,
+    });
+
+    const { stream } = await model.doStream({
+      prompt: basicPrompt('hi'),
+    } as LanguageModelV3CallOptions);
+
+    const parts: LanguageModelV3StreamPart[] = [];
+    const reader = stream.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value);
+    }
+
+    const meta = parts.find((p) => p.type === 'response-metadata');
+    expect(meta).toBeDefined();
+    expect((meta as { id: string }).id).toBe('resp_abc123');
+
+    const finish = parts.find((p) => p.type === 'finish');
+    expect(
+      (finish as { providerMetadata?: { 'codex-direct'?: { responseId?: string } } })
+        .providerMetadata?.['codex-direct']?.responseId,
+    ).toBe('resp_abc123');
+  });
+
+  it('maps input_tokens_details.cached_tokens to usage.inputTokens.cacheRead', async () => {
+    const fakeFetch: typeof fetch = async () =>
+      sseStream([
+        {
+          type: 'response.completed',
+          response: {
+            status: 'completed',
+            usage: {
+              input_tokens: 1000,
+              output_tokens: 50,
+              input_tokens_details: { cached_tokens: 800 },
+            },
+          },
+        },
+        '[DONE]',
+      ]);
+
+    const model = new CodexDirectLanguageModel({
+      modelId: 'gpt-5.3-codex',
+      authManager: makeManager(),
+      fetch: fakeFetch,
+    });
+    const result = await model.doGenerate({
+      prompt: basicPrompt('hi'),
+    } as LanguageModelV3CallOptions);
+
+    expect(result.usage.inputTokens.total).toBe(1000);
+    expect(result.usage.inputTokens.cacheRead).toBe(800);
+    expect(result.usage.inputTokens.noCache).toBe(200);
+  });
+
+  it('captures encrypted reasoning content and surfaces it via providerMetadata', async () => {
+    const fakeFetch: typeof fetch = async () =>
+      sseStream([
+        {
+          type: 'response.output_item.added',
+          output_index: 0,
+          item: { type: 'reasoning', id: 'rs_42', summary: [] },
+        },
+        {
+          type: 'response.reasoning_summary_text.delta',
+          item_id: 'rs_42',
+          delta: 'thinking...',
+        },
+        {
+          type: 'response.output_item.done',
+          output_index: 0,
+          item: {
+            type: 'reasoning',
+            id: 'rs_42',
+            summary: [{ type: 'summary_text', text: 'thinking...' }],
+            encrypted_content: 'OPAQUE_BLOB',
+          },
+        },
+        {
+          type: 'response.completed',
+          response: { status: 'completed', usage: {} },
+        },
+        '[DONE]',
+      ]);
+
+    const model = new CodexDirectLanguageModel({
+      modelId: 'gpt-5.3-codex',
+      authManager: makeManager(),
+      fetch: fakeFetch,
+    });
+
+    const result = await model.doGenerate({
+      prompt: basicPrompt('hi'),
+    } as LanguageModelV3CallOptions);
+
+    const reasoning = result.content.find((c) => c.type === 'reasoning');
+    expect(reasoning).toBeDefined();
+    expect((reasoning as { text: string }).text).toBe('thinking...');
+    expect(
+      (reasoning as { providerMetadata?: { 'codex-direct'?: Record<string, unknown> } })
+        .providerMetadata?.['codex-direct'],
+    ).toMatchObject({ itemId: 'rs_42', encryptedContent: 'OPAQUE_BLOB' });
+  });
+
+  it('forwards previous_response_id and forces store:true', async () => {
+    let captured: Record<string, unknown> | undefined;
+    const fakeFetch: typeof fetch = async (_url, init) => {
+      captured = JSON.parse(String((init as RequestInit).body));
+      return sseStream([
+        { type: 'response.completed', response: { status: 'completed', usage: {} } },
+        '[DONE]',
+      ]);
+    };
+    const model = new CodexDirectLanguageModel({
+      modelId: 'gpt-5.3-codex',
+      authManager: makeManager(),
+      fetch: fakeFetch,
+    });
+
+    await model.doGenerate({
+      prompt: basicPrompt('continue'),
+      providerOptions: {
+        'codex-direct': { previousResponseId: 'resp_prev' },
+      },
+    } as LanguageModelV3CallOptions);
+
+    expect(captured?.previous_response_id).toBe('resp_prev');
+    expect(captured?.store).toBe(true);
+  });
 });

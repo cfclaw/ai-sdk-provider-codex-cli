@@ -14,8 +14,9 @@ export async function refreshCodexToken(
   refreshToken: string,
   endpoints: CodexOAuthEndpoints = DEFAULT_OAUTH_ENDPOINTS,
   fallbackAccountId?: string,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<CodexOAuthState> {
-  const response = await fetch(`${endpoints.issuer}/oauth/token`, {
+  const response = await fetchImpl(`${endpoints.issuer}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({

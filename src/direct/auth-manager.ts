@@ -1,9 +1,27 @@
 import { LoadAPIKeyError } from '@ai-sdk/provider';
 import type { CodexOAuthEndpoints, CodexOAuthState } from '../oauth/types.js';
 import { DEFAULT_OAUTH_ENDPOINTS } from '../oauth/types.js';
-import { extractAccountId } from '../oauth/jwt.js';
+import { extractAccountId, getJwtExpiryMs } from '../oauth/jwt.js';
 import { refreshCodexToken } from '../oauth/refresh.js';
 import { loadCodexAuth, saveCodexAuth } from '../oauth/auth-store.js';
+
+/**
+ * Result returned by `validateAuth()`. Cheap to compute — does not make a
+ * billable LLM call. On a `valid: true` result you can be confident the
+ * cached tokens are well-formed and not expired according to their own
+ * `exp` claim; the only failure mode left is server-side revocation, which
+ * the language model will surface as a 401 (and auto-recover from via the
+ * 401-retry path).
+ */
+export interface CodexAuthValidationResult {
+  valid: boolean;
+  /** ChatGPT account id, when retrievable. */
+  accountId?: string;
+  /** When the current access token expires (epoch ms), if known. */
+  expiresAt?: number;
+  /** Human-readable failure reason; only present when `valid: false`. */
+  error?: string;
+}
 
 /**
  * Callback the consumer can supply to persist refreshed tokens (e.g. to
@@ -33,6 +51,8 @@ export interface CodexAuthManagerOptions {
   endpoints?: CodexOAuthEndpoints;
   /** Refresh tokens this many ms before they expire (default 60s). */
   refreshLeewayMs?: number;
+  /** Custom fetch implementation, mainly for tests. */
+  fetch?: typeof fetch;
 }
 
 const DEFAULT_REFRESH_LEEWAY_MS = 60_000;
@@ -52,6 +72,7 @@ export class CodexAuthManager {
   private readonly persist: OAuthStatePersister | null;
   private readonly endpoints: CodexOAuthEndpoints;
   private readonly refreshLeewayMs: number;
+  private readonly fetchImpl: typeof fetch;
 
   private state: CodexOAuthState | null = null;
   private inflightRefresh: Promise<CodexOAuthState> | null = null;
@@ -61,6 +82,7 @@ export class CodexAuthManager {
     this.source = options.source ?? { authFilePath: '' };
     this.endpoints = options.endpoints ?? DEFAULT_OAUTH_ENDPOINTS;
     this.refreshLeewayMs = options.refreshLeewayMs ?? DEFAULT_REFRESH_LEEWAY_MS;
+    this.fetchImpl = options.fetch ?? fetch;
 
     if (options.persist === false) {
       this.persist = null;
@@ -123,6 +145,69 @@ export class CodexAuthManager {
     return this.ensureState();
   }
 
+  /**
+   * Force a token refresh regardless of expiry. Used by the language model
+   * to recover from a 401 (server-side revocation) before retrying the
+   * request a single time.
+   */
+  async forceRefresh(): Promise<string> {
+    const current = await this.ensureState();
+    const refreshed = await this.refreshLocked(current);
+    return refreshed.accessToken;
+  }
+
+  /**
+   * Cheap healthcheck: confirms tokens load, the access token's `exp`
+   * claim is in the future, and the account id is recoverable. Does not
+   * make a network call — server-side revocation will only show up on
+   * the next real request (which will auto-retry via `forceRefresh`).
+   */
+  async validateAuth(): Promise<CodexAuthValidationResult> {
+    let state: CodexOAuthState;
+    try {
+      state = await this.ensureState();
+    } catch (err) {
+      return {
+        valid: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+
+    const expFromJwt = getJwtExpiryMs(state.accessToken);
+    const expiresAt = expFromJwt ?? state.expires;
+
+    if (expiresAt <= Date.now()) {
+      // Try to refresh proactively rather than reporting expired tokens.
+      try {
+        const refreshed = await this.refreshLocked(state);
+        return {
+          valid: true,
+          accountId: refreshed.accountId,
+          expiresAt: getJwtExpiryMs(refreshed.accessToken) ?? refreshed.expires,
+        };
+      } catch (err) {
+        return {
+          valid: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }
+
+    let accountId: string | undefined;
+    try {
+      accountId = await this.getAccountId();
+    } catch (err) {
+      return {
+        valid: false,
+        accountId: state.accountId,
+        expiresAt,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+
+    return { valid: true, accountId, expiresAt };
+  }
+
   /** Read-only snapshot of the current state, primarily for diagnostics. */
   snapshot(): CodexOAuthState | null {
     return this.state ? { ...this.state } : null;
@@ -175,7 +260,12 @@ export class CodexAuthManager {
 
       let next: CodexOAuthState;
       try {
-        next = await refreshCodexToken(current.refreshToken, this.endpoints, current.accountId);
+        next = await refreshCodexToken(
+          current.refreshToken,
+          this.endpoints,
+          current.accountId,
+          this.fetchImpl,
+        );
       } catch (err) {
         throw new LoadAPIKeyError({
           message: `Codex OAuth token refresh failed (${err instanceof Error ? err.message : String(err)}). Re-authentication required.`,

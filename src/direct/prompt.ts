@@ -5,8 +5,23 @@ import type {
   LanguageModelV3ProviderTool,
   LanguageModelV3ToolCallPart,
   LanguageModelV3ToolResultPart,
+  SharedV3ProviderOptions,
   SharedV3Warning,
 } from '@ai-sdk/provider';
+import type { CodexDirectProviderMetadata } from './types.js';
+
+/**
+ * Read the `codex-direct` slot from a part's `providerOptions`. Returns
+ * `undefined` if absent or malformed.
+ */
+function readCodexProviderOptions(
+  options: SharedV3ProviderOptions | undefined,
+): CodexDirectProviderMetadata | undefined {
+  if (!options) return undefined;
+  const raw = options['codex-direct'];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  return raw as unknown as CodexDirectProviderMetadata;
+}
 
 /**
  * The Codex Responses API uses tool-call IDs prefixed with `fc_`, but the
@@ -167,8 +182,22 @@ export function convertPromptToCodexInput(prompt: LanguageModelV3Prompt): Conver
         if (part.type === 'text' && typeof part.text === 'string') {
           if (part.text.length > 0) textParts.push(part.text);
         } else if (part.type === 'reasoning') {
-          // Reasoning content from prior turns is purely informational —
-          // the API doesn't accept reasoning items as input, so we drop them.
+          // Echo reasoning items back to the API so multi-step tool loops
+          // preserve their hidden chain-of-thought. We rely on the
+          // `codex-direct` providerOptions block populated on the prior
+          // turn (see CodexDirectLanguageModel) for the encrypted content
+          // and item id; without it we emit a summary-only reasoning item,
+          // which still helps the model maintain context.
+          const meta = readCodexProviderOptions(part.providerOptions);
+          const reasoningItem: Record<string, unknown> = { type: 'reasoning' };
+          if (meta?.itemId) reasoningItem.id = meta.itemId;
+          if (meta?.encryptedContent) reasoningItem.encrypted_content = meta.encryptedContent;
+          const summary: Array<Record<string, unknown>> = [];
+          if (typeof part.text === 'string' && part.text.length > 0) {
+            summary.push({ type: 'summary_text', text: part.text });
+          }
+          reasoningItem.summary = summary;
+          input.push(reasoningItem);
           continue;
         } else if (part.type === 'tool-call') {
           toolCalls.push(part);
@@ -252,11 +281,15 @@ export function convertTools(
   const converted: Array<Record<string, unknown>> = [];
   for (const tool of tools) {
     if (tool.type === 'function') {
+      const strict = tool.strict === true;
+      const parameters = strict
+        ? sanitizeStrictSchema(tool.inputSchema)
+        : (tool.inputSchema as Record<string, unknown> | undefined);
       converted.push({
         type: 'function',
         name: tool.name,
         description: tool.description,
-        parameters: tool.inputSchema,
+        parameters,
         strict: tool.strict,
       });
     } else {
@@ -269,6 +302,83 @@ export function convertTools(
   }
 
   return converted.length > 0 ? converted : undefined;
+}
+
+/**
+ * Sanitize a JSON schema for OpenAI strict-mode tools.
+ *
+ * Strict mode rejects schemas that:
+ *   - omit `additionalProperties: false` on object types
+ *   - have any property not present in `required`
+ *   - use unsupported keywords like `format`, `pattern`, `default`, `examples`
+ *
+ * This walker enforces those constraints recursively. It also passes through
+ * `oneOf` / `anyOf` / `allOf` and array `items` so nested schemas are fixed
+ * up. The output is always a plain object the API will accept; the input is
+ * never mutated.
+ */
+export function sanitizeStrictSchema(input: unknown): Record<string, unknown> {
+  return walkStrictSchema(input) as Record<string, unknown>;
+}
+
+const STRICT_DROP_KEYWORDS = new Set([
+  '$schema',
+  '$id',
+  '$ref',
+  '$defs',
+  'definitions',
+  'title',
+  'examples',
+  'default',
+  'format',
+  'pattern',
+  'minLength',
+  'maxLength',
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'multipleOf',
+]);
+
+function walkStrictSchema(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((v) => walkStrictSchema(v));
+
+  const obj = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+
+  for (const [key, val] of Object.entries(obj)) {
+    if (STRICT_DROP_KEYWORDS.has(key)) continue;
+    if (key === 'properties' && val && typeof val === 'object' && !Array.isArray(val)) {
+      const props = val as Record<string, unknown>;
+      const sanitizedProps: Record<string, unknown> = {};
+      for (const [propName, propSchema] of Object.entries(props)) {
+        sanitizedProps[propName] = walkStrictSchema(propSchema);
+      }
+      out[key] = sanitizedProps;
+      continue;
+    }
+    if ((key === 'oneOf' || key === 'anyOf' || key === 'allOf') && Array.isArray(val)) {
+      out[key] = val.map((v) => walkStrictSchema(v));
+      continue;
+    }
+    if (key === 'items') {
+      out[key] = walkStrictSchema(val);
+      continue;
+    }
+    out[key] = walkStrictSchema(val);
+  }
+
+  // For object schemas, force `additionalProperties: false` and require
+  // every property. This is what OpenAI strict mode demands.
+  if (out.type === 'object' || (out.properties && typeof out.properties === 'object')) {
+    out.additionalProperties = false;
+    const props = (out.properties as Record<string, unknown> | undefined) ?? {};
+    out.required = Object.keys(props);
+  }
+
+  return out;
 }
 
 export const DEFAULT_INSTRUCTION_FALLBACK = DEFAULT_INSTRUCTIONS;

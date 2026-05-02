@@ -1,6 +1,6 @@
 import type { LanguageModelV3, ProviderV3 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
-import { CodexAuthManager } from './auth-manager.js';
+import { CodexAuthManager, type CodexAuthValidationResult } from './auth-manager.js';
 import { CodexDirectLanguageModel } from './codex-direct-language-model.js';
 import type { CodexDirectProviderSettings, CodexDirectSettings } from './types.js';
 import type { CodexModelId } from '../types-shared.js';
@@ -11,6 +11,13 @@ export interface CodexDirectProvider extends ProviderV3 {
   chat(modelId: CodexModelId, settings?: CodexDirectSettings): LanguageModelV3;
   /** Imperatively refresh the cached OAuth state from disk / source. */
   refreshAuth(): Promise<void>;
+  /**
+   * Cheap healthcheck — confirms tokens load, the access token's `exp`
+   * claim is in the future, and the account id is recoverable. Does not
+   * make a billable LLM call. Server-side revocation surfaces only on the
+   * next real request (which auto-recovers via the 401-retry path).
+   */
+  validateAuth(): Promise<CodexAuthValidationResult>;
   embeddingModel(modelId: string): never;
   imageModel(modelId: string): never;
 }
@@ -29,6 +36,7 @@ export function createCodexDirect(options: CodexDirectProviderSettings = {}): Co
     source: options.auth,
     persist: options.persist,
     endpoints: options.endpoints,
+    fetch: options.fetch,
   });
 
   const createModel = (
@@ -60,6 +68,7 @@ export function createCodexDirect(options: CodexDirectProviderSettings = {}): Co
   provider.refreshAuth = async () => {
     await authManager.refreshState();
   };
+  provider.validateAuth = () => authManager.validateAuth();
   provider.embeddingModel = ((modelId: string) => {
     throw new NoSuchModelError({ modelId, modelType: 'embeddingModel' });
   }) as never;

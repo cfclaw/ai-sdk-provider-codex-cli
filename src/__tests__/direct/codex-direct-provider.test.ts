@@ -35,4 +35,11 @@ describe('createCodexDirect', () => {
     const Ctor = provider as unknown as new (modelId: string) => unknown;
     expect(() => new Ctor('gpt-5.3-codex')).toThrow(/cannot be invoked with `new`/);
   });
+
+  it('exposes a working validateAuth() healthcheck', async () => {
+    const provider = createCodexDirect({ auth: { state: SOURCE_STATE }, persist: false });
+    const result = await provider.validateAuth();
+    expect(result.valid).toBe(true);
+    expect(result.accountId).toBe('acc-1');
+  });
 });

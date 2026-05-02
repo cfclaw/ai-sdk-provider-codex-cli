@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeJwtPayload, extractAccountId } from '../../oauth/jwt.js';
+import { decodeJwtPayload, extractAccountId, getJwtExpiryMs } from '../../oauth/jwt.js';
 
 function makeJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
@@ -56,5 +56,23 @@ describe('extractAccountId', () => {
   it('returns undefined when no claim is present', () => {
     const token = makeJwt({ unrelated: 'value' });
     expect(extractAccountId(token)).toBeUndefined();
+  });
+});
+
+describe('getJwtExpiryMs', () => {
+  it('returns the exp claim as epoch milliseconds', () => {
+    const expSeconds = Math.floor(Date.now() / 1000) + 3600;
+    const token = makeJwt({ exp: expSeconds });
+    expect(getJwtExpiryMs(token)).toBe(expSeconds * 1000);
+  });
+
+  it('returns undefined when exp is missing or not a number', () => {
+    expect(getJwtExpiryMs(makeJwt({}))).toBeUndefined();
+    expect(getJwtExpiryMs(makeJwt({ exp: 'soon' }))).toBeUndefined();
+  });
+
+  it('returns undefined for malformed tokens', () => {
+    expect(getJwtExpiryMs('not-a-jwt')).toBeUndefined();
+    expect(getJwtExpiryMs('')).toBeUndefined();
   });
 });

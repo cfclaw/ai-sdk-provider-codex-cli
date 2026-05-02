@@ -198,4 +198,93 @@ describe('CodexAuthManager', () => {
     expect(await a).toBe(newAccess);
     expect(await b).toBe(newAccess);
   });
+
+  it('forceRefresh refreshes even when the current token is not expired', async () => {
+    const newAccess = makeJwt({ chatgpt_account_id: 'acc-new' });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ access_token: newAccess, refresh_token: 'r2', expires_in: 3600 }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+
+    const manager = new CodexAuthManager({
+      source: {
+        state: {
+          accessToken: 'old',
+          refreshToken: 'r1',
+          accountId: 'acc-old',
+          expires: Date.now() + 60 * 60_000, // not expired
+        },
+      },
+      persist: false,
+      endpoints: ENDPOINTS,
+    });
+
+    expect(await manager.forceRefresh()).toBe(newAccess);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('validateAuth returns valid + expiresAt for healthy state', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const expSeconds = Math.floor(Date.now() / 1000) + 600;
+    const accessToken = makeJwt({ chatgpt_account_id: 'acc-1', exp: expSeconds });
+    const manager = new CodexAuthManager({
+      source: {
+        state: {
+          accessToken,
+          refreshToken: 'r',
+          accountId: 'acc-1',
+          expires: Date.now() + 60 * 60_000,
+        },
+      },
+      persist: false,
+      endpoints: ENDPOINTS,
+    });
+
+    const result = await manager.validateAuth();
+    expect(result.valid).toBe(true);
+    expect(result.accountId).toBe('acc-1');
+    expect(result.expiresAt).toBe(expSeconds * 1000);
+    // No network call should have been made.
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('validateAuth proactively refreshes when the token is expired', async () => {
+    const newAccess = makeJwt({ chatgpt_account_id: 'acc-new' });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ access_token: newAccess, refresh_token: 'r2', expires_in: 3600 }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const manager = new CodexAuthManager({
+      source: {
+        state: {
+          accessToken: 'old',
+          refreshToken: 'r1',
+          expires: Date.now() - 1000,
+        },
+      },
+      persist: false,
+      endpoints: ENDPOINTS,
+    });
+
+    const result = await manager.validateAuth();
+    expect(result.valid).toBe(true);
+    expect(result.accountId).toBe('acc-new');
+  });
+
+  it('validateAuth returns invalid when the source has no state', async () => {
+    const manager = new CodexAuthManager({
+      source: { getState: async () => null },
+      persist: false,
+      endpoints: ENDPOINTS,
+    });
+    const result = await manager.validateAuth();
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/no codex oauth state/i);
+  });
 });

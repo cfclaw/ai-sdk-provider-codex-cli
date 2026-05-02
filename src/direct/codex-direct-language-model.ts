@@ -39,8 +39,12 @@ const providerOptionsSchema: z.ZodType<CodexDirectProviderOptions> = z
     reasoningSummary: z.enum(['auto', 'concise', 'detailed']).optional(),
     textVerbosity: z.enum(['low', 'medium', 'high']).optional(),
     store: z.boolean().optional(),
+    previousResponseId: z.string().optional(),
+    include: z.array(z.string()).optional(),
   })
   .strict();
+
+const REASONING_INCLUDE_FLAG = 'reasoning.encrypted_content';
 
 export interface CodexDirectLanguageModelInit {
   modelId: CodexModelId;
@@ -156,6 +160,7 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
           }
           case 'reasoning-start': {
             const block: LanguageModelV3Reasoning = { type: 'reasoning', text: '' };
+            if (part.providerMetadata) block.providerMetadata = part.providerMetadata;
             reasoningBlocks.set(part.id, block);
             content.push(block);
             break;
@@ -163,6 +168,13 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
           case 'reasoning-delta': {
             const block = reasoningBlocks.get(part.id);
             if (block) block.text += part.delta;
+            break;
+          }
+          case 'reasoning-end': {
+            const block = reasoningBlocks.get(part.id);
+            if (block && part.providerMetadata) {
+              block.providerMetadata = part.providerMetadata;
+            }
             break;
           }
           case 'tool-call':
@@ -291,27 +303,82 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
       body.text = { ...existingText, verbosity: providerOptions.textVerbosity };
     }
 
-    const accessToken = await this.authManager.getAccessToken();
-    const accountId = await this.authManager.getAccountId();
-    const headers = this.buildHeaders(accessToken, accountId, options.headers);
+    if (providerOptions?.previousResponseId) {
+      body.previous_response_id = providerOptions.previousResponseId;
+      // The API requires `store: true` to look up a prior response. If the
+      // caller forgot, set it for them — silently failing here would be
+      // worse than implicitly enabling the only mode that makes the request
+      // valid.
+      body.store = true;
+    }
+
+    // Always opt into encrypted reasoning so multi-step tool loops can echo
+    // reasoning state back on follow-up turns. Merge with any extra flags
+    // the caller asked for, deduped.
+    const includeFlags = new Set<string>([REASONING_INCLUDE_FLAG]);
+    for (const flag of providerOptions?.include ?? []) {
+      if (typeof flag === 'string' && flag.length > 0) includeFlags.add(flag);
+    }
+    body.include = [...includeFlags];
 
     const url = `${this.baseUrl}/codex/responses`;
-    let response: Response;
-    try {
-      response = await this.fetchImpl(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: options.abortSignal,
-      });
-    } catch (err) {
-      throw new APICallError({
-        url,
-        message: `Codex API unreachable: ${err instanceof Error ? err.message : String(err)}`,
-        requestBodyValues: body,
-        isRetryable: true,
-        cause: err,
-      });
+    const response = await this.executeRequest(url, body, options.abortSignal, options.headers);
+
+    const stream = this.buildStreamPipeline(response.body!, warnings);
+
+    return {
+      stream,
+      request: { body },
+      response: { headers: headersToRecord(response.headers) },
+    };
+  }
+
+  /**
+   * POST to /codex/responses with current OAuth tokens. On a 401 we assume
+   * server-side revocation, force a token refresh, and retry exactly once.
+   * Any other non-2xx is surfaced as an `APICallError`.
+   */
+  private async executeRequest(
+    url: string,
+    body: Record<string, unknown>,
+    signal: AbortSignal | undefined,
+    extraHeaders: Record<string, string | undefined> | undefined,
+  ): Promise<Response> {
+    const buildAndSend = async (forceRefresh: boolean): Promise<Response> => {
+      const accessToken = forceRefresh
+        ? await this.authManager.forceRefresh()
+        : await this.authManager.getAccessToken();
+      const accountId = await this.authManager.getAccountId();
+      const headers = this.buildHeaders(accessToken, accountId, extraHeaders);
+      try {
+        return await this.fetchImpl(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+          signal,
+        });
+      } catch (err) {
+        throw new APICallError({
+          url,
+          message: `Codex API unreachable: ${err instanceof Error ? err.message : String(err)}`,
+          requestBodyValues: body,
+          isRetryable: true,
+          cause: err,
+        });
+      }
+    };
+
+    let response = await buildAndSend(false);
+
+    if (response.status === 401) {
+      // Drain the body so the connection can be reused.
+      try {
+        await response.text();
+      } catch {
+        /* ignore */
+      }
+      this.logger.info('[codex-direct] 401 received; refreshing tokens and retrying once.');
+      response = await buildAndSend(true);
     }
 
     if (!response.ok || !response.body) {
@@ -327,13 +394,7 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
       });
     }
 
-    const stream = this.buildStreamPipeline(response.body, warnings);
-
-    return {
-      stream,
-      request: { body },
-      response: { headers: headersToRecord(response.headers) },
-    };
+    return response;
   }
 
   private buildHeaders(
@@ -370,16 +431,28 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
       async start(controller) {
         controller.enqueue({ type: 'stream-start', warnings });
 
-        const responseId = generateId();
-        controller.enqueue({
-          type: 'response-metadata',
-          id: responseId,
-          modelId,
-          timestamp: new Date(),
-        });
+        // We hold off on emitting `response-metadata` until we've observed
+        // the server's `response.created` event so that callers see the real
+        // upstream response id (matching OpenAI's usage logs). If the server
+        // never sends one, we synthesize an id at the latest possible moment.
+        let serverResponseId: string | undefined;
+        let responseMetadataEmitted = false;
+        const ensureResponseMetadata = () => {
+          if (responseMetadataEmitted) return;
+          controller.enqueue({
+            type: 'response-metadata',
+            id: serverResponseId ?? generateId(),
+            modelId,
+            timestamp: new Date(),
+          });
+          responseMetadataEmitted = true;
+        };
 
         let activeTextId: string | undefined;
-        let activeReasoningId: string | undefined;
+        const reasoningItems = new Map<
+          string,
+          { itemId: string; encryptedContent?: string; closed: boolean }
+        >();
         const pendingToolCalls = new Map<number, PendingToolCall>();
         let usage: LanguageModelV3Usage = emptyUsage();
         let finishReason: LanguageModelV3FinishReason = { unified: 'stop', raw: undefined };
@@ -391,17 +464,40 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
             activeTextId = undefined;
           }
         };
-        const closeReasoning = () => {
-          if (activeReasoningId) {
-            controller.enqueue({ type: 'reasoning-end', id: activeReasoningId });
-            activeReasoningId = undefined;
-          }
+
+        const closeReasoning = (itemId: string) => {
+          const entry = reasoningItems.get(itemId);
+          if (!entry || entry.closed) return;
+          entry.closed = true;
+          const providerMetadata: SharedV3ProviderMetadata = {
+            'codex-direct': {
+              itemId: entry.itemId,
+              ...(entry.encryptedContent ? { encryptedContent: entry.encryptedContent } : {}),
+            },
+          };
+          controller.enqueue({ type: 'reasoning-end', id: entry.itemId, providerMetadata });
+        };
+
+        const closeAllReasoning = () => {
+          for (const id of reasoningItems.keys()) closeReasoning(id);
         };
 
         try {
           for await (const event of iterateSseEvents(body)) {
             if (event === SSE_DONE) break;
             const type = event.type as string | undefined;
+
+            if (type === 'response.created' || type === 'response.in_progress') {
+              const r = event.response as Record<string, unknown> | undefined;
+              const id = r?.id;
+              if (typeof id === 'string' && id.length > 0) serverResponseId = id;
+              ensureResponseMetadata();
+              continue;
+            }
+
+            // Lazy-emit response-metadata before any content, so callers
+            // always see it in front of text/reasoning/tool deltas.
+            ensureResponseMetadata();
 
             if (type === 'response.output_text.delta' && typeof event.delta === 'string') {
               if (!activeTextId) {
@@ -421,27 +517,35 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
               type === 'response.reasoning_summary_text.delta' &&
               typeof event.delta === 'string'
             ) {
-              if (!activeReasoningId) {
-                activeReasoningId = (event.item_id as string | undefined) ?? generateId();
-                controller.enqueue({ type: 'reasoning-start', id: activeReasoningId });
+              const itemId = (event.item_id as string | undefined) ?? '__default_reasoning__';
+              if (!reasoningItems.has(itemId)) {
+                reasoningItems.set(itemId, { itemId, closed: false });
+                controller.enqueue({ type: 'reasoning-start', id: itemId });
               }
               controller.enqueue({
                 type: 'reasoning-delta',
-                id: activeReasoningId,
+                id: itemId,
                 delta: event.delta,
               });
               continue;
             }
 
             if (type === 'response.reasoning_summary_text.done') {
-              closeReasoning();
+              // Don't close yet — we still want the encrypted_content from
+              // the matching output_item.done event below. Just no-op here.
               continue;
             }
 
             if (type === 'response.output_item.added') {
               const item = event.item as Record<string, unknown> | undefined;
               const outputIndex = event.output_index as number | undefined;
-              if (item?.type === 'function_call' && typeof outputIndex === 'number') {
+              if (item?.type === 'reasoning') {
+                const itemId = (item.id as string) ?? `reasoning_${outputIndex ?? 0}`;
+                if (!reasoningItems.has(itemId)) {
+                  reasoningItems.set(itemId, { itemId, closed: false });
+                  controller.enqueue({ type: 'reasoning-start', id: itemId });
+                }
+              } else if (item?.type === 'function_call' && typeof outputIndex === 'number') {
                 const rawId = (item.call_id as string) ?? (item.id as string) ?? '';
                 const pending: PendingToolCall = {
                   id: fromCodexId(rawId),
@@ -501,7 +605,15 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
               } else if (item?.type === 'message') {
                 closeText();
               } else if (item?.type === 'reasoning') {
-                closeReasoning();
+                const itemId = (item.id as string) ?? `reasoning_${outputIndex ?? 0}`;
+                const entry = reasoningItems.get(itemId) ?? {
+                  itemId,
+                  closed: false,
+                };
+                const enc = item.encrypted_content;
+                if (typeof enc === 'string' && enc.length > 0) entry.encryptedContent = enc;
+                reasoningItems.set(itemId, entry);
+                closeReasoning(itemId);
               }
               continue;
             }
@@ -512,23 +624,33 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
               type === 'response.incomplete'
             ) {
               closeText();
-              closeReasoning();
+              closeAllReasoning();
               const responseObj = event.response as Record<string, unknown> | undefined;
               if (responseObj) {
+                const id = responseObj.id;
+                if (typeof id === 'string' && id.length > 0) serverResponseId = id;
+
                 const u = responseObj.usage as
                   | {
                       input_tokens?: number;
                       output_tokens?: number;
                       total_tokens?: number;
+                      input_tokens_details?: { cached_tokens?: number };
                       output_tokens_details?: { reasoning_tokens?: number };
                     }
                   | undefined;
                 if (u) {
+                  const cached = u.input_tokens_details?.cached_tokens;
+                  const totalIn = u.input_tokens;
+                  const noCache =
+                    typeof totalIn === 'number' && typeof cached === 'number'
+                      ? Math.max(totalIn - cached, 0)
+                      : totalIn;
                   usage = {
                     inputTokens: {
-                      total: u.input_tokens,
-                      noCache: u.input_tokens,
-                      cacheRead: undefined,
+                      total: totalIn,
+                      noCache,
+                      cacheRead: cached,
                       cacheWrite: undefined,
                     },
                     outputTokens: {
@@ -554,7 +676,7 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
 
             if (type === 'response.failed' || type === 'error') {
               closeText();
-              closeReasoning();
+              closeAllReasoning();
               const message =
                 (event.error as { message?: string } | undefined)?.message ??
                 (event.message as string | undefined) ??
@@ -571,7 +693,8 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
           }
         } catch (err) {
           closeText();
-          closeReasoning();
+          closeAllReasoning();
+          ensureResponseMetadata();
           controller.enqueue({ type: 'error', error: err });
           if (!finishEmitted) {
             controller.enqueue({
@@ -586,9 +709,18 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
         }
 
         closeText();
-        closeReasoning();
+        closeAllReasoning();
+        ensureResponseMetadata();
         if (!finishEmitted) {
-          controller.enqueue({ type: 'finish', usage, finishReason });
+          const providerMetadata: SharedV3ProviderMetadata | undefined = serverResponseId
+            ? { 'codex-direct': { responseId: serverResponseId } }
+            : undefined;
+          controller.enqueue({
+            type: 'finish',
+            usage,
+            finishReason,
+            ...(providerMetadata ? { providerMetadata } : {}),
+          });
           finishEmitted = true;
         }
         controller.close();

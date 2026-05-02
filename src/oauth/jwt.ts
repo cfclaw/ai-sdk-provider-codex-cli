@@ -59,3 +59,17 @@ export function extractAccountId(accessToken: string, idToken?: string): string 
   }
   return undefined;
 }
+
+/**
+ * Read the `exp` (expires-at) claim from a JWT and return it as epoch
+ * milliseconds. Returns `undefined` if the token isn't a structurally
+ * valid JWT or has no `exp` claim. Useful for healthchecks that want to
+ * report when an access token will lapse without making a network call.
+ */
+export function getJwtExpiryMs(token: string): number | undefined {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return undefined;
+  const exp = payload['exp'];
+  if (typeof exp !== 'number' || !Number.isFinite(exp)) return undefined;
+  return exp * 1000;
+}

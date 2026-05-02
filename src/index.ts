@@ -94,11 +94,13 @@ export type {
   CodexDirectSettings,
   CodexDirectProviderSettings,
   CodexDirectProviderOptions,
+  CodexDirectProviderMetadata,
 } from './direct/types.js';
 export {
   CodexAuthManager,
   type CodexAuthManagerOptions,
   type CodexAuthSource,
+  type CodexAuthValidationResult,
   type OAuthStatePersister,
 } from './direct/auth-manager.js';
 
@@ -115,6 +117,7 @@ export {
   defaultAuthFilePath,
   extractAccountId,
   decodeJwtPayload,
+  getJwtExpiryMs,
   DEFAULT_OAUTH_ENDPOINTS,
 } from './oauth/index.js';
 export type {
