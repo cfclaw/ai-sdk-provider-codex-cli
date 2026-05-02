@@ -121,6 +121,30 @@ const provider = createCodexDirect({
 const model = provider('gpt-5.3-codex');
 ```
 
+#### Corporate proxies
+
+`codexDirect` honors the standard proxy environment variables on every request, including token refresh and the device/browser auth flows:
+
+```bash
+export HTTP_PROXY=http://127.0.0.1:5678
+export HTTPS_PROXY=http://127.0.0.1:5678
+export NO_PROXY="localhost,127.0.0.1,internal.example.com"
+```
+
+Lowercase variants (`http_proxy`, `https_proxy`, `no_proxy`) and `ALL_PROXY` are also recognized. Implementation uses undici's `EnvHttpProxyAgent`, so env-var changes take effect on the next request without restart.
+
+**SOCKS proxies** (`ALL_PROXY=socks5://...`) are not supported by the bundled dispatcher. If a SOCKS variable is set we log a warning and fall through. To use SOCKS, install `socks-proxy-agent` and pass a custom fetch:
+
+```js
+import { createCodexDirect } from 'ai-sdk-provider-codex-cli';
+import { SocksProxyAgent } from 'socks-proxy-agent';
+
+const dispatcher = /* build from SocksProxyAgent — see socks-proxy-agent docs */;
+const proxiedFetch = (url, init) => fetch(url, { ...init, dispatcher });
+
+const provider = createCodexDirect({ fetch: proxiedFetch });
+```
+
 ### Exec provider (`codexExec`) — process-per-call
 
 ```js

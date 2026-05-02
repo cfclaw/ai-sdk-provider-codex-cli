@@ -4,6 +4,7 @@ import { DEFAULT_OAUTH_ENDPOINTS } from '../oauth/types.js';
 import { extractAccountId, getJwtExpiryMs } from '../oauth/jwt.js';
 import { refreshCodexToken } from '../oauth/refresh.js';
 import { loadCodexAuth, saveCodexAuth } from '../oauth/auth-store.js';
+import { makeProxyAwareFetch } from './proxy.js';
 
 /**
  * Result returned by `validateAuth()`. Cheap to compute — does not make a
@@ -82,7 +83,9 @@ export class CodexAuthManager {
     this.source = options.source ?? { authFilePath: '' };
     this.endpoints = options.endpoints ?? DEFAULT_OAUTH_ENDPOINTS;
     this.refreshLeewayMs = options.refreshLeewayMs ?? DEFAULT_REFRESH_LEEWAY_MS;
-    this.fetchImpl = options.fetch ?? fetch;
+    // Default to a proxy-aware fetch so token refreshes go through the same
+    // outbound path as request traffic.
+    this.fetchImpl = options.fetch ?? makeProxyAwareFetch();
 
     if (options.persist === false) {
       this.persist = null;

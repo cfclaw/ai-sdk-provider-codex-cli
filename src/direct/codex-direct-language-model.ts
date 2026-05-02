@@ -29,6 +29,7 @@ import type { CodexDirectProviderOptions, CodexDirectSettings } from './types.js
 import type { CodexModelId } from '../types-shared.js';
 import { getLogger, createVerboseLogger } from '../logger.js';
 import type { Logger } from '../types-shared.js';
+import { makeProxyAwareFetch } from './proxy.js';
 
 const DEFAULT_BASE_URL = 'https://chatgpt.com/backend-api';
 const DEFAULT_ORIGINATOR = 'ai-sdk-provider-codex-cli';
@@ -120,9 +121,12 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
     this.authManager = init.authManager;
     this.settings = init.settings ?? {};
     this.baseUrl = (init.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
-    this.fetchImpl = init.fetch ?? fetch;
     const baseLogger = getLogger(this.settings.logger);
     this.logger = createVerboseLogger(baseLogger, this.settings.verbose ?? false);
+    // Default to a proxy-aware fetch that honors HTTP_PROXY / HTTPS_PROXY /
+    // NO_PROXY at request time. Callers can override this for tests or to
+    // wire up SOCKS support themselves.
+    this.fetchImpl = init.fetch ?? makeProxyAwareFetch(this.logger);
   }
 
   async doGenerate(options: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> {

@@ -17,6 +17,13 @@ import http from 'node:http';
 import type { CodexOAuthEndpoints, CodexOAuthState } from './types.js';
 import { DEFAULT_OAUTH_ENDPOINTS } from './types.js';
 import { extractAccountId } from './jwt.js';
+import { makeProxyAwareFetch } from '../direct/proxy.js';
+
+let proxyAwareFetch: typeof fetch | undefined;
+function getDefaultFetch(): typeof fetch {
+  if (!proxyAwareFetch) proxyAwareFetch = makeProxyAwareFetch();
+  return proxyAwareFetch;
+}
 
 const SCOPE = 'openid profile email offline_access';
 const DEFAULT_CALLBACK_PORT = 1455;
@@ -40,6 +47,8 @@ export interface BrowserAuthOptions {
   callbackPort?: number;
   /** How long to wait for the user to complete the flow (ms). Default 2min. */
   timeoutMs?: number;
+  /** Custom fetch implementation; defaults to a proxy-aware fetch. */
+  fetch?: typeof fetch;
 }
 
 function generatePKCE(): PKCEPair {
@@ -79,8 +88,9 @@ async function exchangeAuthorizationCode(
   verifier: string,
   endpoints: CodexOAuthEndpoints,
   redirectUri: string,
+  fetchImpl: typeof fetch,
 ): Promise<CodexOAuthState | null> {
-  const response = await fetch(`${endpoints.issuer}/oauth/token`, {
+  const response = await fetchImpl(`${endpoints.issuer}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -223,6 +233,7 @@ export async function startCodexOAuthFlow(options: BrowserAuthOptions = {}): Pro
   const callbackPort = options.callbackPort ?? DEFAULT_CALLBACK_PORT;
   const redirectUri = `http://localhost:${callbackPort}${DEFAULT_CALLBACK_PATH}`;
   const timeoutMs = options.timeoutMs ?? 120_000;
+  const fetchImpl = options.fetch ?? getDefaultFetch();
 
   const pkce = generatePKCE();
   const state = createState();
@@ -247,6 +258,7 @@ export async function startCodexOAuthFlow(options: BrowserAuthOptions = {}): Pro
       pkce.verifier,
       endpoints,
       redirectUri,
+      fetchImpl,
     );
 
     if (!tokens) {
@@ -273,7 +285,8 @@ export async function exchangeCodeManually(
   const endpoints = options.endpoints ?? DEFAULT_OAUTH_ENDPOINTS;
   const callbackPort = options.callbackPort ?? DEFAULT_CALLBACK_PORT;
   const redirectUri = `http://localhost:${callbackPort}${DEFAULT_CALLBACK_PATH}`;
-  const tokens = await exchangeAuthorizationCode(code, verifier, endpoints, redirectUri);
+  const fetchImpl = options.fetch ?? getDefaultFetch();
+  const tokens = await exchangeAuthorizationCode(code, verifier, endpoints, redirectUri, fetchImpl);
   if (!tokens) {
     return { success: false, error: 'Failed to exchange authorization code' };
   }

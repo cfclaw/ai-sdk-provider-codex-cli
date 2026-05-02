@@ -16,8 +16,19 @@
 import type { CodexOAuthEndpoints, CodexOAuthState } from './types.js';
 import { DEFAULT_OAUTH_ENDPOINTS } from './types.js';
 import { extractAccountId } from './jwt.js';
+import { makeProxyAwareFetch } from '../direct/proxy.js';
 
 const USER_AGENT = 'ai-sdk-provider-codex-cli';
+
+/**
+ * Lazily-built proxy-aware fetch shared by the auth helpers. Constructed on
+ * first use so importing this module never touches process.env eagerly.
+ */
+let proxyAwareFetch: typeof fetch | undefined;
+function getDefaultFetch(): typeof fetch {
+  if (!proxyAwareFetch) proxyAwareFetch = makeProxyAwareFetch();
+  return proxyAwareFetch;
+}
 
 /**
  * Result handed back to the caller after `initiateDeviceAuth`. The caller
@@ -44,8 +55,9 @@ export type DeviceAuthPollResult =
  */
 export async function initiateDeviceAuth(
   endpoints: CodexOAuthEndpoints = DEFAULT_OAUTH_ENDPOINTS,
+  fetchImpl: typeof fetch = getDefaultFetch(),
 ): Promise<DeviceAuthInitResult> {
-  const response = await fetch(`${endpoints.issuer}/api/accounts/deviceauth/usercode`, {
+  const response = await fetchImpl(`${endpoints.issuer}/api/accounts/deviceauth/usercode`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'User-Agent': USER_AGENT },
     body: JSON.stringify({ client_id: endpoints.clientId }),
@@ -95,8 +107,9 @@ export async function pollDeviceAuth(
   deviceAuthId: string,
   userCode: string,
   endpoints: CodexOAuthEndpoints = DEFAULT_OAUTH_ENDPOINTS,
+  fetchImpl: typeof fetch = getDefaultFetch(),
 ): Promise<DeviceAuthPollResult> {
-  const pollResponse = await fetch(`${endpoints.issuer}/api/accounts/deviceauth/token`, {
+  const pollResponse = await fetchImpl(`${endpoints.issuer}/api/accounts/deviceauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'User-Agent': USER_AGENT },
     body: JSON.stringify({ device_auth_id: deviceAuthId, user_code: userCode }),
@@ -126,7 +139,7 @@ export async function pollDeviceAuth(
     };
   }
 
-  const tokenResponse = await fetch(`${endpoints.issuer}/oauth/token`, {
+  const tokenResponse = await fetchImpl(`${endpoints.issuer}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -177,6 +190,8 @@ export interface PollUntilCompleteOptions {
   signal?: AbortSignal;
   /** Custom endpoints (mainly useful for tests). */
   endpoints?: CodexOAuthEndpoints;
+  /** Custom fetch implementation; defaults to a proxy-aware fetch. */
+  fetch?: typeof fetch;
 }
 
 /**
@@ -191,6 +206,7 @@ export async function pollDeviceAuthUntilComplete(
   const intervalMs = options.intervalMs ?? init.interval * 1000;
   const timeoutMs = options.timeoutMs ?? 15 * 60 * 1000;
   const endpoints = options.endpoints ?? DEFAULT_OAUTH_ENDPOINTS;
+  const fetchImpl = options.fetch ?? getDefaultFetch();
   const deadline = Date.now() + timeoutMs;
 
   for (;;) {
@@ -201,7 +217,7 @@ export async function pollDeviceAuthUntilComplete(
       return { status: 'failed', error: 'Device authorization timed out' };
     }
 
-    const result = await pollDeviceAuth(init.deviceAuthId, init.userCode, endpoints);
+    const result = await pollDeviceAuth(init.deviceAuthId, init.userCode, endpoints, fetchImpl);
     if (result.status !== 'pending') return result;
 
     await sleep(intervalMs, options.signal);
