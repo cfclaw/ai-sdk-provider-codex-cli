@@ -21,7 +21,7 @@
 
 import { generateText, stepCountIs, tool } from 'ai';
 import { z } from 'zod';
-import { codexDirect } from 'ai-sdk-provider-codex-cli';
+import { codexDirect } from 'ai-sdk-provider-codex-direct';
 
 // Track concurrency so we can prove the calls really did run in parallel.
 let inFlight = 0;
@@ -99,7 +99,7 @@ const tools = {
 };
 
 const result = await generateText({
-  model: codexDirect('gpt-5.3-codex'),
+  model: codexDirect('gpt-5.5'),
   tools,
   // Allow up to 4 model<->tools round trips. Without `stopWhen`, the
   // SDK would return after the very first tool batch without ever

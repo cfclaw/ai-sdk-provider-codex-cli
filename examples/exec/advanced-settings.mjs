@@ -1,5 +1,5 @@
 import { generateText } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 async function main() {
   // Example 1: High reasoning effort

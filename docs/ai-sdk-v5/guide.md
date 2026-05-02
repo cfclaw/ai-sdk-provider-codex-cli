@@ -14,14 +14,14 @@ codex login   # or set OPENAI_API_KEY
 2. Install AI SDK and this provider:
 
 ```bash
-npm i ai ai-sdk-provider-codex-cli
+npm i ai ai-sdk-provider-codex-direct
 ```
 
 ## Basic Usage
 
 ```js
 import { generateText, streamText, generateObject } from 'ai';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexCli } from 'ai-sdk-provider-codex-direct';
 import { z } from 'zod';
 
 const model = codexCli('gpt-5.1-codex', {
@@ -128,7 +128,7 @@ The provider supports four log levels:
 ### Basic Configuration
 
 ```typescript
-import { createCodexCli } from 'ai-sdk-provider-codex-cli';
+import { createCodexCli } from 'ai-sdk-provider-codex-direct';
 
 // Default: logs warnings and errors to console
 const defaultCodex = createCodexCli();
@@ -172,7 +172,7 @@ Enable verbose mode to see detailed execution logs, including:
 **With verbose mode enabled**, `debug` and `info` messages are also logged.
 
 ```typescript
-import { createCodexCli } from 'ai-sdk-provider-codex-cli';
+import { createCodexCli } from 'ai-sdk-provider-codex-direct';
 
 // Enable verbose logging for debugging
 const codexWithDebug = createCodexCli({
@@ -247,7 +247,7 @@ With `verbose: true`, you'll see intermediate process logs including:
 For comprehensive debugging, combine verbose logging with error handling:
 
 ```typescript
-import { createCodexCli } from 'ai-sdk-provider-codex-cli';
+import { createCodexCli } from 'ai-sdk-provider-codex-direct';
 import { generateText } from 'ai';
 
 const codexCli = createCodexCli({

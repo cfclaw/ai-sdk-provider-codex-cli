@@ -9,7 +9,7 @@ import type { Logger } from '../types-shared.js';
 export interface CodexDirectSettings {
   /** Override the system instruction. Otherwise system messages from the prompt are used. */
   defaultInstructions?: string;
-  /** Identifier sent as the `originator` header (and used as the request originator). Defaults to `ai-sdk-provider-codex-cli`. */
+  /** Identifier sent as the `originator` header (and used as the request originator). Defaults to `ai-sdk-provider-codex-direct`. */
   originator?: string;
   /** Custom logger; pass `false` to disable logging. */
   logger?: Logger | false;

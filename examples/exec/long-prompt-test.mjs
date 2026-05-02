@@ -7,7 +7,7 @@
  */
 
 import { generateText } from 'ai';
-import { createCodexExec } from 'ai-sdk-provider-codex-cli';
+import { createCodexExec } from 'ai-sdk-provider-codex-direct';
 
 const FRONTEND_PROMPT = `You are a designer who also writes production code.
 You care about spacing, visual hierarchy, and interaction quality.

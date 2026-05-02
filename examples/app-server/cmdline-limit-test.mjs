@@ -9,7 +9,7 @@
  */
 
 import { generateText } from 'ai';
-import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+import { createCodexAppServer } from 'ai-sdk-provider-codex-direct';
 
 async function main() {
   console.log('=== Windows Command Line Limit Test ===\n');

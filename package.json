@@ -1,7 +1,7 @@
 {
-  "name": "ai-sdk-provider-codex-cli",
+  "name": "ai-sdk-provider-codex-direct",
   "version": "1.1.0",
-  "description": "AI SDK v6 provider for OpenAI Codex CLI (use ChatGPT Plus/Pro subscription)",
+  "description": "AI SDK v6 provider for OpenAI Codex API (use ChatGPT Plus/Pro subscription)",
   "keywords": [
     "ai-sdk",
     "codex",
@@ -14,16 +14,16 @@
     "gpt-5.2-codex-max",
     "provider"
   ],
-  "homepage": "https://github.com/ben-vargas/ai-sdk-provider-codex-cli",
+  "homepage": "https://github.com/cfclaw/ai-sdk-provider-codex-direct",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ben-vargas/ai-sdk-provider-codex-cli.git"
+    "url": "git+https://github.com/cfclaw/ai-sdk-provider-codex-direct.git"
   },
   "bugs": {
-    "url": "https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues"
+    "url": "https://github.com/cfclaw/ai-sdk-provider-codex-direct/issues"
   },
   "license": "MIT",
-  "author": "Ben Vargas",
+  "author": "Carter Feldman",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",

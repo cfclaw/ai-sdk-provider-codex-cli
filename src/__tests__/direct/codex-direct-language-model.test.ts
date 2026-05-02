@@ -99,7 +99,7 @@ describe('CodexDirectLanguageModel', () => {
     expect(headers.Authorization).toMatch(/^Bearer /);
     expect(headers['ChatGPT-Account-Id']).toBe('acc-1');
     expect(headers['OpenAI-Beta']).toBe('responses=experimental');
-    expect(headers.originator).toBe('ai-sdk-provider-codex-cli');
+    expect(headers.originator).toBe('ai-sdk-provider-codex-direct');
 
     const body = JSON.parse(String(captured.init?.body));
     expect(body.model).toBe('gpt-5.3-codex');

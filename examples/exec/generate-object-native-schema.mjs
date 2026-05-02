@@ -11,7 +11,7 @@
  */
 
 import { generateObject } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 import { z } from 'zod';
 
 console.log(' Native JSON Schema Showcase\n');

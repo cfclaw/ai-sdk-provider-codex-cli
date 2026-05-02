@@ -12,7 +12,7 @@
  */
 
 import { generateText, streamText } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 console.log(' Experimental JSON Events\n');
 console.log('This example demonstrates the new event format in v0.2.0.');

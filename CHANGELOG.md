@@ -211,15 +211,15 @@ The following hardening changes apply to both exec and app-server providers:
 For AI SDK v5 users:
 
 ```bash
-npm install ai-sdk-provider-codex-cli@ai-sdk-v5 ai@^5.0.0
+npm install ai-sdk-provider-codex-direct@ai-sdk-v5 ai@^5.0.0
 ```
 
 ### Version Compatibility
 
 | Provider Version | AI SDK Version | NPM Installation                                      |
 | ---------------- | -------------- | ----------------------------------------------------- |
-| 1.x.x            | v6             | `npm i ai-sdk-provider-codex-cli ai@^6.0.0`           |
-| 0.x.x            | v5             | `npm i ai-sdk-provider-codex-cli@ai-sdk-v5 ai@^5.0.0` |
+| 1.x.x            | v6             | `npm i ai-sdk-provider-codex-direct ai@^6.0.0`           |
+| 0.x.x            | v5             | `npm i ai-sdk-provider-codex-direct@ai-sdk-v5 ai@^5.0.0` |
 
 ## [1.0.0-beta.1] - 2025-12-15
 

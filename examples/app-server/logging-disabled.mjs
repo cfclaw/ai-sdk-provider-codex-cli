@@ -24,7 +24,7 @@
  */
 
 import { streamText } from 'ai';
-import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+import { createCodexAppServer } from 'ai-sdk-provider-codex-direct';
 
 const appServer = createCodexAppServer({
   defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },

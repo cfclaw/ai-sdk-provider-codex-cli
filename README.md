@@ -1,14 +1,14 @@
 # AI SDK Provider for Codex CLI
 
-[![npm version](https://img.shields.io/npm/v/ai-sdk-provider-codex-cli.svg)](https://www.npmjs.com/package/ai-sdk-provider-codex-cli)
-[![npm downloads](https://img.shields.io/npm/dm/ai-sdk-provider-codex-cli.svg)](https://www.npmjs.com/package/ai-sdk-provider-codex-cli)
+[![npm version](https://img.shields.io/npm/v/ai-sdk-provider-codex-direct.svg)](https://www.npmjs.com/package/ai-sdk-provider-codex-direct)
+[![npm downloads](https://img.shields.io/npm/dm/ai-sdk-provider-codex-direct.svg)](https://www.npmjs.com/package/ai-sdk-provider-codex-direct)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node >= 18](https://img.shields.io/badge/node-%3E%3D18-43853d?logo=node.js&logoColor=white)
 ![AI SDK v6](https://img.shields.io/badge/AI%20SDK-v6-000?logo=vercel&logoColor=white)
 ![Modules: ESM + CJS](https://img.shields.io/badge/modules-ESM%20%2B%20CJS-3178c6)
 ![TypeScript](https://img.shields.io/badge/TypeScript-blue)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues)
-[![Latest Release](https://img.shields.io/github/v/release/ben-vargas/ai-sdk-provider-codex-cli?display_name=tag)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/releases/latest)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ben-vargas/ai-sdk-provider-codex-direct/issues)
+[![Latest Release](https://img.shields.io/github/v/release/ben-vargas/ai-sdk-provider-codex-direct?display_name=tag)](https://github.com/ben-vargas/ai-sdk-provider-codex-direct/releases/latest)
 
 A community provider for Vercel AI SDK v6 that integrates OpenAI's Codex CLI with GPT‑5.1 / GPT‑5.2 class models (`gpt-5.1`, `gpt-5.2`, the Codex-specific `gpt-5.3-codex` / `gpt-5.2-codex`, the flagship `*-codex-max`, and the lightweight `*-codex-mini` slugs) using your ChatGPT Plus/Pro subscription.
 
@@ -30,8 +30,8 @@ This package ships three provider modes:
 
 | Provider Version | AI SDK Version | NPM Tag     | NPM Installation                                      |
 | ---------------- | -------------- | ----------- | ----------------------------------------------------- |
-| 1.x.x            | v6             | `latest`    | `npm i ai-sdk-provider-codex-cli ai@^6.0.0`           |
-| 0.x.x            | v5             | `ai-sdk-v5` | `npm i ai-sdk-provider-codex-cli@ai-sdk-v5 ai@^5.0.0` |
+| 1.x.x            | v6             | `latest`    | `npm i ai-sdk-provider-codex-direct ai@^6.0.0`           |
+| 0.x.x            | v5             | `ai-sdk-v5` | `npm i ai-sdk-provider-codex-direct@ai-sdk-v5 ai@^5.0.0` |
 
 ## Installation
 
@@ -47,13 +47,13 @@ codex login   # or set OPENAI_API_KEY
 2. Install provider and AI SDK v6
 
 ```bash
-npm i ai ai-sdk-provider-codex-cli
+npm i ai ai-sdk-provider-codex-direct
 ```
 
 ### For AI SDK v5
 
 ```bash
-npm i ai@^5.0.0 ai-sdk-provider-codex-cli@ai-sdk-v5
+npm i ai@^5.0.0 ai-sdk-provider-codex-direct@ai-sdk-v5
 ```
 
 > **⚠️ Codex CLI Version**: Requires Codex CLI **>= 0.105.0** for full support of both provider modes (`codexExec` and `codexAppServer`). If you supply your own Codex CLI (global install or custom `codexPath`), check it with `codex --version` and upgrade if needed. The optional dependency `@openai/codex` in this package pulls a compatible version automatically.
@@ -70,7 +70,7 @@ Reads OAuth tokens from `~/.codex/auth.json` (the same file `codex login` writes
 
 ```js
 import { generateText } from 'ai';
-import { codexDirect } from 'ai-sdk-provider-codex-cli';
+import { codexDirect } from 'ai-sdk-provider-codex-direct';
 
 const { text } = await generateText({
   model: codexDirect('gpt-5.3-codex'),
@@ -86,7 +86,7 @@ import {
   initiateDeviceAuth,
   pollDeviceAuthUntilComplete,
   saveCodexAuth,
-} from 'ai-sdk-provider-codex-cli';
+} from 'ai-sdk-provider-codex-direct';
 
 const init = await initiateDeviceAuth();
 console.log(`Open ${init.verificationUrl} and enter code: ${init.userCode}`);
@@ -102,7 +102,7 @@ For desktop apps with a browser available, use `startCodexOAuthFlow()` instead �
 You can also pass tokens explicitly (e.g. from your own database):
 
 ```js
-import { createCodexDirect } from 'ai-sdk-provider-codex-cli';
+import { createCodexDirect } from 'ai-sdk-provider-codex-direct';
 
 const provider = createCodexDirect({
   auth: {
@@ -136,7 +136,7 @@ Lowercase variants (`http_proxy`, `https_proxy`, `no_proxy`) and `ALL_PROXY` are
 **SOCKS proxies** (`ALL_PROXY=socks5://...`) are not supported by the bundled dispatcher. If a SOCKS variable is set we log a warning and fall through. To use SOCKS, install `socks-proxy-agent` and pass a custom fetch:
 
 ```js
-import { createCodexDirect } from 'ai-sdk-provider-codex-cli';
+import { createCodexDirect } from 'ai-sdk-provider-codex-direct';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 
 const dispatcher = /* build from SocksProxyAgent — see socks-proxy-agent docs */;
@@ -149,7 +149,7 @@ const provider = createCodexDirect({ fetch: proxiedFetch });
 
 ```js
 import { generateText } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
@@ -169,7 +169,7 @@ console.log(text);
 
 ```js
 import { streamText } from 'ai';
-import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+import { createCodexAppServer } from 'ai-sdk-provider-codex-direct';
 
 const provider = createCodexAppServer({
   defaultSettings: {
@@ -194,7 +194,7 @@ By default, `codexAppServer` is stateless (new ephemeral thread per call). To co
 
 ```js
 import { generateText } from 'ai';
-import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+import { createCodexAppServer } from 'ai-sdk-provider-codex-direct';
 
 const provider = createCodexAppServer();
 
@@ -221,7 +221,7 @@ await provider.close();
 ```js
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 const schema = z.object({ name: z.string(), age: z.number().int() });
 const { object } = await generateObject({
@@ -255,7 +255,7 @@ The provider supports multimodal (image) inputs for vision-capable models:
 
 ```js
 import { generateText } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 import { readFileSync } from 'fs';
 
 const model = codexExec('gpt-5.3-codex', { allowNpx: true, skipGitRepoCheck: true });
@@ -297,7 +297,7 @@ The provider supports comprehensive tool streaming, enabling real-time monitorin
 
 ```js
 import { streamText } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 const result = await streamText({
   model: codexExec('gpt-5.3-codex', { allowNpx: true, skipGitRepoCheck: true }),
@@ -333,7 +333,7 @@ See `examples/exec/streaming-tool-calls.mjs`, `examples/exec/streaming-multiple-
 Control logging verbosity and integrate with your observability stack:
 
 ```js
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 // Default: warn/error only (clean production output)
 const model = codexExec('gpt-5.3-codex', {
@@ -469,7 +469,7 @@ Local MCP security defaults:
 Control reasoning effort, verbosity, and advanced Codex features at model creation time:
 
 ```ts
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
@@ -523,7 +523,7 @@ values take precedence over constructor defaults while leaving other settings in
 
 ```ts
 import { generateText } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
@@ -560,7 +560,7 @@ const response = await generateText({
 App-server per-call overrides use `providerOptions['codex-app-server']`:
 
 ```ts
-import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+import { createCodexAppServer } from 'ai-sdk-provider-codex-direct';
 
 const appServerProvider = createCodexAppServer();
 

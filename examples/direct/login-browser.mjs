@@ -11,7 +11,7 @@
 
 import { exec } from 'node:child_process';
 import { platform } from 'node:os';
-import { startCodexOAuthFlow, saveCodexAuth, defaultAuthFilePath } from 'ai-sdk-provider-codex-cli';
+import { startCodexOAuthFlow, saveCodexAuth, defaultAuthFilePath } from 'ai-sdk-provider-codex-direct';
 
 function openBrowser(url) {
   const cmd =

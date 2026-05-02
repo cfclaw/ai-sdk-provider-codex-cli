@@ -2,7 +2,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { generateText } from 'ai';
-import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+import { createCodexAppServer } from 'ai-sdk-provider-codex-direct';
 
 function run(cmd, args) {
   const res = spawnSync(cmd, args, { stdio: 'pipe', encoding: 'utf8' });

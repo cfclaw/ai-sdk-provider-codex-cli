@@ -32,7 +32,7 @@ import type { Logger } from '../types-shared.js';
 import { makeProxyAwareFetch } from './proxy.js';
 
 const DEFAULT_BASE_URL = 'https://chatgpt.com/backend-api';
-const DEFAULT_ORIGINATOR = 'ai-sdk-provider-codex-cli';
+const DEFAULT_ORIGINATOR = 'ai-sdk-provider-codex-direct';
 
 const providerOptionsSchema: z.ZodType<CodexDirectProviderOptions> = z
   .object({
@@ -414,7 +414,7 @@ export class CodexDirectLanguageModel implements LanguageModelV3 {
       'OpenAI-Beta': 'responses=experimental',
       originator: this.settings.originator ?? DEFAULT_ORIGINATOR,
       Accept: 'text/event-stream',
-      'User-Agent': 'ai-sdk-provider-codex-cli',
+      'User-Agent': 'ai-sdk-provider-codex-direct',
     };
     if (extra) {
       for (const [key, value] of Object.entries(extra)) {

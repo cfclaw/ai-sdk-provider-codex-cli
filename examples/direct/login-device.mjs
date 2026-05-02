@@ -15,7 +15,7 @@ import {
   pollDeviceAuthUntilComplete,
   saveCodexAuth,
   defaultAuthFilePath,
-} from 'ai-sdk-provider-codex-cli';
+} from 'ai-sdk-provider-codex-direct';
 
 async function main() {
   const init = await initiateDeviceAuth();

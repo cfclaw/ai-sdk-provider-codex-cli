@@ -14,7 +14,7 @@
  */
 
 import { streamText } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 async function main() {
   console.log('=== Default Logging (Non-Verbose Mode) ===\n');

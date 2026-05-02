@@ -192,7 +192,7 @@ Now, based on the following conversation, generate ONLY the JSON object:
 
 ### For Most Users
 
-- [ ] Update package: `npm install ai-sdk-provider-codex-cli@0.2.0`
+- [ ] Update package: `npm install ai-sdk-provider-codex-direct@0.2.0`
 - [ ] **CRITICAL**: Review ALL Zod schemas:
   - [ ] Remove all `.optional()` calls
   - [ ] Replace `.email()`, `.url()`, `.uuid()` with `.describe()`
@@ -220,7 +220,7 @@ Now, based on the following conversation, generate ONLY the JSON object:
 
 ```javascript
 import { generateObject } from 'ai';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexCli } from 'ai-sdk-provider-codex-direct';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -240,7 +240,7 @@ const { object } = await generateObject({
 
 ```javascript
 import { generateObject } from 'ai';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexCli } from 'ai-sdk-provider-codex-direct';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -270,7 +270,7 @@ const { object } = await generateObject({
 
 **Solution:**
 
-1. Verify you're on v0.2.0: `npm list ai-sdk-provider-codex-cli`
+1. Verify you're on v0.2.0: `npm list ai-sdk-provider-codex-direct`
 2. Check Codex CLI version: `codex --version` (should support `--output-schema`)
 3. Report issue with example if problem persists
 
@@ -308,7 +308,7 @@ const { object } = await generateObject({
 ## Getting Help
 
 - 📖 Read the [full documentation](./guide.md)
-- 🐛 Report issues on [GitHub](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues)
+- 🐛 Report issues on [GitHub](https://github.com/ben-vargas/ai-sdk-provider-codex-direct/issues)
 - 💬 Ask questions in discussions
 - 📝 Check the [CHANGELOG](../../CHANGELOG.md) for detailed changes
 

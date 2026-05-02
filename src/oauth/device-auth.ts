@@ -18,7 +18,7 @@ import { DEFAULT_OAUTH_ENDPOINTS } from './types.js';
 import { extractAccountId } from './jwt.js';
 import { makeProxyAwareFetch } from '../direct/proxy.js';
 
-const USER_AGENT = 'ai-sdk-provider-codex-cli';
+const USER_AGENT = 'ai-sdk-provider-codex-direct';
 
 /**
  * Lazily-built proxy-aware fetch shared by the auth helpers. Constructed on

@@ -7,7 +7,7 @@
  */
 
 import { generateText } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,

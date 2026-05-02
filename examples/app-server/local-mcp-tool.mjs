@@ -2,7 +2,7 @@
 
 import { generateText } from 'ai';
 import { z } from 'zod';
-import { createCodexAppServer, createSdkMcpServer, tool } from 'ai-sdk-provider-codex-cli';
+import { createCodexAppServer, createSdkMcpServer, tool } from 'ai-sdk-provider-codex-direct';
 
 const addNumbers = tool({
   name: 'add_numbers',

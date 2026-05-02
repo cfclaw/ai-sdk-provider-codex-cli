@@ -1,6 +1,6 @@
 // Run: node examples/app-server/list-models.mjs
 
-import { listModels } from 'ai-sdk-provider-codex-cli';
+import { listModels } from 'ai-sdk-provider-codex-direct';
 
 const { models, defaultModel } = await listModels({
   minCodexVersion: '0.105.0-alpha.0',

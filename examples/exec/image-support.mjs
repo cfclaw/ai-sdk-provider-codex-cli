@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs';
 import { extname, basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generateText, streamText } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 // Supported image extensions and their MIME types
 const SUPPORTED_EXTENSIONS = {

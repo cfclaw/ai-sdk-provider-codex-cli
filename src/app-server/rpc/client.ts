@@ -491,7 +491,7 @@ export class AppServerRpcClient extends EventEmitter {
 
     const initializeParams: InitializeParams = {
       clientInfo: {
-        name: 'ai-sdk-provider-codex-cli',
+        name: 'ai-sdk-provider-codex-direct',
         version: this.clientVersion,
       },
       capabilities: {

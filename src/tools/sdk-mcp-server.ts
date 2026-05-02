@@ -1,7 +1,7 @@
 import { createLocalMcpServer, type LocalMcpServer } from './local-mcp-server.js';
 import type { LocalTool } from './tool-builder.js';
 
-export const SDK_MCP_SERVER_MARKER = Symbol.for('ai-sdk-provider-codex-cli.sdkMcpServer');
+export const SDK_MCP_SERVER_MARKER = Symbol.for('ai-sdk-provider-codex-direct.sdkMcpServer');
 
 export interface SdkMcpServer {
   readonly [SDK_MCP_SERVER_MARKER]: true;

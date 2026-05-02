@@ -17,7 +17,7 @@
  */
 
 import { streamText } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 // Custom logger that prefixes each level and adds timestamps
 const customLogger = {

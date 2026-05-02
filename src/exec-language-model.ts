@@ -350,7 +350,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
     // --image flag uses `num_args = 1..` (greedy), which consumes subsequent
     // values until another flag is encountered. Without '--', the '-' for stdin
     // would be interpreted as an additional image path.
-    // See: https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues/19
+    // See: https://github.com/ben-vargas/ai-sdk-provider-codex-direct/issues/19
     if (tempImagePaths.length > 0) {
       args.push('--');
     }

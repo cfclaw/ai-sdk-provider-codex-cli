@@ -20,7 +20,7 @@
  */
 
 import { streamText } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 async function main() {
   console.log('=== Verbose Logging Mode ===\n');

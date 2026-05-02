@@ -9,10 +9,10 @@
  */
 
 import { generateText } from 'ai';
-import { codexDirect } from 'ai-sdk-provider-codex-cli';
+import { codexDirect } from 'ai-sdk-provider-codex-direct';
 
 const { text, usage } = await generateText({
-  model: codexDirect('gpt-5.3-codex'),
+  model: codexDirect('gpt-5.5'),
   prompt: 'Reply with exactly one word: hello.',
 });
 

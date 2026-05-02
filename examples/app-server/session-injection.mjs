@@ -1,7 +1,7 @@
 // Run: node examples/app-server/session-injection.mjs
 
 import { streamText } from 'ai';
-import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+import { createCodexAppServer } from 'ai-sdk-provider-codex-direct';
 
 const provider = createCodexAppServer({
   defaultSettings: {

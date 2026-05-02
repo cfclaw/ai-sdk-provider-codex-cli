@@ -5,7 +5,7 @@
  * Run:  node examples/direct/check-auth.mjs
  */
 
-import { loadCodexAuth, defaultAuthFilePath } from 'ai-sdk-provider-codex-cli';
+import { loadCodexAuth, defaultAuthFilePath } from 'ai-sdk-provider-codex-direct';
 
 const path = defaultAuthFilePath();
 const state = await loadCodexAuth();

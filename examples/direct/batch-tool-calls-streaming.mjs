@@ -17,7 +17,7 @@
 
 import { streamText, stepCountIs, tool } from 'ai';
 import { z } from 'zod';
-import { codexDirect } from 'ai-sdk-provider-codex-cli';
+import { codexDirect } from 'ai-sdk-provider-codex-direct';
 
 const tools = {
   getWeather: tool({

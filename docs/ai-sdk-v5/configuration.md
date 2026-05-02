@@ -112,7 +112,7 @@ model instance. The provider parses the `codex-cli` entry and applies the keys b
 
 ```ts
 import { generateText } from 'ai';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexCli } from 'ai-sdk-provider-codex-direct';
 
 const model = codexCli('gpt-5.1', {
   reasoningEffort: 'medium',

@@ -1,5 +1,5 @@
 import { generateText } from 'ai';
-import { codexExec } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-direct';
 
 // Demonstrates custom CWD and sandbox/approval options
 

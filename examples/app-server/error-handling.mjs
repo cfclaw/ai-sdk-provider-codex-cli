@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { generateText } from 'ai';
-import { createCodexAppServer, isAuthenticationError } from 'ai-sdk-provider-codex-cli';
+import { createCodexAppServer, isAuthenticationError } from 'ai-sdk-provider-codex-direct';
 
 const appServer = createCodexAppServer({
   defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
